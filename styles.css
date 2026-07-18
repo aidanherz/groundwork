@@ -1,18 +1,18 @@
 /* ================= Offbook NYC ================= */
 :root {
-  --paper: #f7f3e3;
-  --paper-deep: #ede6cf;
-  --ink: #1b2b20;
-  --ink-soft: #46584b;
-  --ink-faint: #7d8a7e;
-  --moss: #2c5940;
-  --moss-bright: #38724f;
-  --clay: #1e4936;
-  --err: #96432a;
-  --line: #d8d1b6;
-  --card: #fffcf1;
-  --good: #2e6b46;
-  --warn: #9a6a1f;
+  --paper: #16291f;
+  --paper-deep: #101f17;
+  --ink: #f6f2e0;
+  --ink-soft: #d6d0b8;
+  --ink-faint: #a3b0a0;
+  --moss: #f0ead2;
+  --moss-bright: #fdf8e4;
+  --clay: #b8d4b0;
+  --err: #e89b78;
+  --line: #2e4a39;
+  --card: #1d3628;
+  --good: #9fd0ae;
+  --warn: #c9a25a;
   --serif: "Fraunces", Georgia, serif;
   --sans: "Public Sans", -apple-system, sans-serif;
 }
@@ -183,7 +183,7 @@ main {
   color: var(--ink-soft);
   cursor: pointer;
 }
-.mode-btn.active { background: var(--moss); border-color: var(--moss); color: #f4f6f2; }
+.mode-btn.active { background: var(--moss); border-color: var(--moss); color: #16291f; }
 
 .search-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 .mode-fields { display: flex; gap: 12px; flex: 1; flex-wrap: wrap; }
@@ -200,8 +200,8 @@ main {
 .field input, .field select, textarea {
   font-family: var(--sans);
   font-size: 0.95rem;
-  color: var(--ink);
-  background: #fff;
+  color: #1b2b20;
+  background: #f7f3e3;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 9px 11px;
@@ -222,7 +222,7 @@ main {
   cursor: pointer;
   border: 1px solid transparent;
 }
-.btn.primary { background: var(--moss); color: #f4f6f2; }
+.btn.primary { background: var(--moss); color: #16291f; }
 .btn.primary:hover { background: var(--moss-bright); }
 .btn.ghost {
   background: none;
@@ -287,7 +287,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 8px 10px;
-  background: #fff;
+  background: #f7f3e3;
+  color: #1b2b20;
   font-size: 0.9rem;
 }
 
@@ -307,6 +308,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
   border-radius: 999px;
   padding: 5px 10px;
   background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
 }
 .deal-body { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
