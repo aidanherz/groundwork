@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Groundwork — Off-Market Deal Sourcing NYC</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">§</span>
+    <span class="brand-name">Ground<em>work</em></span>
+  </div>
+  <p class="brand-tag">Off-market sourcing · ACRIS research · Owner outreach</p>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-panel="panel-dashboard">
+    <span class="tab-ico">◫</span><span>Overview</span>
+  </button>
+  <button class="tab" data-panel="panel-research">
+    <span class="tab-ico">⌕</span><span>Research</span>
+  </button>
+  <button class="tab" data-panel="panel-pipeline">
+    <span class="tab-ico">☰</span><span>Pipeline</span>
+  </button>
+  <button class="tab" data-panel="panel-owners">
+    <span class="tab-ico">✉</span><span>Owners</span>
+  </button>
+</nav>
+
+<main>
+
+<!-- ============ DASHBOARD ============ -->
+<section class="panel active" id="panel-dashboard">
+  <h1 class="panel-title">The morning look</h1>
+  <p class="panel-sub">Where every lead stands, and who needs a nudge today.</p>
+
+  <div class="stat-row" id="stat-row"><!-- filled by JS --></div>
+
+  <div class="two-col">
+    <div class="card">
+      <h2 class="card-title">Follow-ups due</h2>
+      <div id="due-list" class="stack"></div>
+    </div>
+    <div class="card">
+      <h2 class="card-title">Recent activity</h2>
+      <div id="activity-list" class="stack"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RESEARCH ============ -->
+<section class="panel" id="panel-research">
+  <h1 class="panel-title">Property research</h1>
+  <p class="panel-sub">Pulls live records from NYC's public ACRIS database — deeds, mortgages, and the names behind them.</p>
+
+  <div class="card search-card">
+    <div class="search-mode" id="search-mode">
+      <button class="mode-btn active" data-mode="address">By address</button>
+      <button class="mode-btn" data-mode="bbl">By block &amp; lot</button>
+    </div>
+
+    <form id="search-form" class="search-form">
+      <label class="field">
+        <span>Borough</span>
+        <select id="f-borough">
+          <option value="" selected>All boroughs</option>
+          <option value="1">Manhattan</option>
+          <option value="2">Bronx</option>
+          <option value="3">Brooklyn</option>
+          <option value="4">Queens</option>
+          <option value="5">Staten Island</option>
+        </select>
+      </label>
+
+      <div class="mode-fields" id="fields-address">
+        <label class="field">
+          <span>Street number</span>
+          <input id="f-number" type="text" inputmode="numeric" placeholder="e.g. 123">
+        </label>
+        <label class="field grow">
+          <span>Street name</span>
+          <input id="f-street" type="text" placeholder="e.g. Bedford Avenue">
+        </label>
+      </div>
+
+      <div class="mode-fields hidden" id="fields-bbl">
+        <label class="field">
+          <span>Block</span>
+          <input id="f-block" type="text" inputmode="numeric" placeholder="e.g. 2325">
+        </label>
+        <label class="field">
+          <span>Lot</span>
+          <input id="f-lot" type="text" inputmode="numeric" placeholder="e.g. 15">
+        </label>
+      </div>
+
+      <button type="submit" class="btn primary" id="search-btn">Search records</button>
+    </form>
+    <p class="fine-print">Data comes directly from NYC Department of Finance (ACRIS) — the same records title companies use. Searches can take a few seconds.</p>
+  </div>
+
+  <div id="search-status"></div>
+  <div id="search-results" class="stack"></div>
+
+  <div class="card hint-card">
+    <h2 class="card-title">Tracing an LLC owner</h2>
+    <p>When the owner is an LLC, the <strong>mailing address on the deed or mortgage</strong> (shown with each name below) is your best lead — it's often the principal's office or home. Cross-check the entity on the
+    <a href="https://apps.dos.ny.gov/publicInquiry/" target="_blank" rel="noopener">NY State business registry ↗</a>
+    to find the registered agent and filing history.</p>
+  </div>
+</section>
+
+<!-- ============ PIPELINE ============ -->
+<section class="panel" id="panel-pipeline">
+  <h1 class="panel-title">Deal pipeline</h1>
+  <p class="panel-sub">Every property you're chasing, from first look to closed.</p>
+
+  <div class="pipeline-toolbar">
+    <select id="stage-filter">
+      <option value="">All stages</option>
+    </select>
+    <button class="btn ghost" id="add-manual">+ Add property manually</button>
+  </div>
+
+  <div id="pipeline-list" class="stack"></div>
+</section>
+
+<!-- ============ OWNERS ============ -->
+<section class="panel" id="panel-owners">
+  <h1 class="panel-title">Owner outreach</h1>
+  <p class="panel-sub">Contact details and conversation history for every owner in the pipeline.</p>
+  <div id="owners-list" class="stack"></div>
+</section>
+
+</main>
+
+<footer class="site-foot">
+  <p>Records via NYC Open Data / ACRIS. This tool is for research — always verify with a title search before contracting.</p>
+</footer>
+
+<div id="toast" class="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
