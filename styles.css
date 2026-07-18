@@ -1,15 +1,16 @@
 /* ================= Offbook NYC ================= */
 :root {
-  --paper: #f5f2ea;
-  --paper-deep: #ece8dc;
-  --ink: #1d241f;
-  --ink-soft: #4c554e;
-  --ink-faint: #8a9089;
-  --moss: #31543f;
-  --moss-bright: #3e6b50;
-  --clay: #9a4a2e;
-  --line: #d8d3c4;
-  --card: #fbf9f4;
+  --paper: #f7f3e3;
+  --paper-deep: #ede6cf;
+  --ink: #1b2b20;
+  --ink-soft: #46584b;
+  --ink-faint: #7d8a7e;
+  --moss: #2c5940;
+  --moss-bright: #38724f;
+  --clay: #1e4936;
+  --err: #96432a;
+  --line: #d8d1b6;
+  --card: #fffcf1;
   --good: #2e6b46;
   --warn: #9a6a1f;
   --serif: "Fraunces", Georgia, serif;
@@ -237,7 +238,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .fine-print { font-size: 0.78rem; color: var(--ink-faint); margin-top: 12px; }
 
 #search-status { margin: 14px 0; font-size: 0.92rem; color: var(--ink-soft); }
-#search-status .err { color: var(--clay); }
+#search-status .err { color: var(--err); }
 
 /* property result card */
 .prop-card { border-left: 3px solid var(--moss); }
