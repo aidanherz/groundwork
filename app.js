@@ -1,4 +1,4 @@
-/* ================= Offbook NYC — app logic ================= */
+/* ================= Groundwork — app logic ================= */
 
 /* ---------- tiny helpers ---------- */
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -15,6 +15,8 @@ function toast(msg) {
 }
 
 const BOROUGHS = { 1: "Manhattan", 2: "Bronx", 3: "Brooklyn", 4: "Queens", 5: "Staten Island" };
+const BORO_NUM = { Manhattan: "1", Bronx: "2", Brooklyn: "3", Queens: "4", "Staten Island": "5" };
+const BORO_PLUTO = { Manhattan: "MN", Bronx: "BX", Brooklyn: "BK", Queens: "QN", "Staten Island": "SI" };
 
 const STAGES = ["New lead", "Researching", "Outreach sent", "In contact", "Negotiating", "Under contract", "Dead"];
 
@@ -35,17 +37,41 @@ const DOC_TYPES = {
   CONS: ["Consolidation of mortgages", false],
 };
 
+const BLDG_CLASS = {
+  A: "One-family home", B: "Two-family home", C: "Walk-up apartment building",
+  D: "Elevator apartment building", E: "Warehouse", F: "Factory / industrial",
+  G: "Garage / gas station", H: "Hotel", I: "Hospital / health facility", J: "Theater",
+  K: "Retail store", L: "Loft building", M: "Religious building", N: "Group home / asylum",
+  O: "Office building", P: "Public assembly", Q: "Recreation", R: "Condo unit",
+  S: "Mixed store & residence", T: "Transportation", U: "Utility", V: "Vacant land",
+  W: "School / education", Y: "Government", Z: "Miscellaneous",
+};
+
 function fmtMoney(v) {
   const n = Number(v);
   if (!n) return "";
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+function fmtNum(v) {
+  const n = Number(v);
+  return n ? n.toLocaleString("en-US") : "";
 }
 function fmtDate(v) {
   if (!v) return "date unknown";
   const d = new Date(v);
   return isNaN(d) ? "date unknown" : d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
 }
+function fmtShort(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 function today() { return new Date().toISOString().slice(0, 10); }
+function addDays(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 /* ---------- data store (browser localStorage) ---------- */
 const STORE_KEY = "offbook.crm.v1";
@@ -62,6 +88,9 @@ const SAMPLE_DEALS = [
       { date: addDays(-9), text: "Found via ACRIS — long-held, no recent debt" },
       { date: addDays(-3), text: "Mailed intro letter" },
     ],
+    facts: { propertyType: "Walk-up apartment building", bldgClass: "C0", zoning: "R6B", taxClass: "2A", unitsRes: "3", unitsTotal: "3", floors: "3", yearBuilt: "1931", lotSqft: "2000", bldgSqft: "3600", assessed: "1080000", fetchedAt: addDays(-9) },
+    debt: { deedDate: "2009-03-12", mortgageCount: 2, satCount: 2, openMortgages: 0, lastMortgageDate: "2011-06-20", hasLP: false, fetchedAt: addDays(-9) },
+    score: { value: 5, driver: "equity", reasons: ["Owned for 17 years", "Every recorded mortgage has been paid off", "No new borrowing in over 10 years"] },
   },
   {
     id: "sample-2", sample: true,
@@ -74,6 +103,9 @@ const SAMPLE_DEALS = [
       { date: addDays(-14), text: "Skip-traced phone number" },
       { date: addDays(-6), text: "First call — friendly, asked me to call back" },
     ],
+    facts: { propertyType: "Walk-up apartment building", bldgClass: "C3", zoning: "R5", taxClass: "2A", unitsRes: "6", unitsTotal: "6", floors: "3", yearBuilt: "1928", lotSqft: "2500", bldgSqft: "5400", assessed: "890000", fetchedAt: addDays(-14) },
+    debt: { deedDate: "2021-08-15", mortgageCount: 1, satCount: 1, openMortgages: 0, lastMortgageDate: "2009-04-30", hasLP: false, fetchedAt: addDays(-14) },
+    score: { value: 4, driver: "equity", reasons: ["Every recorded mortgage has been paid off", "No new borrowing in over 10 years"] },
   },
   {
     id: "sample-3", sample: true,
@@ -83,14 +115,11 @@ const SAMPLE_DEALS = [
     notes: "Lis pendens filed in March — pre-foreclosure. Two mortgages on record totaling ~$1.4M. Need to find the principal behind the LLC.",
     nextAction: "Check NY State registry for LLC agent", nextDate: today(),
     activity: [{ date: addDays(-2), text: "Spotted lis pendens in ACRIS search" }],
+    facts: { propertyType: "Walk-up apartment building", bldgClass: "C1", zoning: "R7A", taxClass: "2", unitsRes: "8", unitsTotal: "8", floors: "4", yearBuilt: "1910", lotSqft: "1700", bldgSqft: "6800", assessed: "950000", fetchedAt: addDays(-2) },
+    debt: { deedDate: "2019-05-10", mortgageCount: 2, satCount: 0, openMortgages: 2, lastMortgageDate: "2024-11-01", hasLP: true, fetchedAt: addDays(-2) },
+    score: { value: 5, driver: "pressure", reasons: ["A lis pendens (lawsuit/foreclosure notice) is on file", "Two mortgages appear open", "New borrowing against the property in the last 3 years"] },
   },
 ];
-
-function addDays(n) {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-}
 
 function loadStore() {
   try {
@@ -159,12 +188,67 @@ function renderDashboard() {
     : `<p class="empty-note">No activity logged yet.</p>`;
 }
 
-/* ---------- ACRIS research ---------- */
+/* ---------- debt summary + seller-likelihood score ---------- */
+function summarizeMasters(masters) {
+  const dated = masters
+    .filter((m) => m && m.doc_type)
+    .map((m) => ({ t: m.doc_type, d: (m.document_date || m.recorded_datetime || "") }));
+  const latestOf = (types) =>
+    dated.filter((x) => types.includes(x.t)).sort((a, b) => b.d.localeCompare(a.d))[0];
+  const deed = latestOf(["DEED", "DEEDO"]);
+  const mortgages = dated.filter((x) => ["MTGE", "CONS"].includes(x.t));
+  const satCount = dated.filter((x) => x.t === "SAT").length;
+  const lastM = mortgages.slice().sort((a, b) => b.d.localeCompare(a.d))[0];
+  return {
+    deedDate: deed ? deed.d.slice(0, 10) : "",
+    mortgageCount: mortgages.length,
+    satCount,
+    openMortgages: Math.max(0, mortgages.length - satCount),
+    lastMortgageDate: lastM ? lastM.d.slice(0, 10) : "",
+    hasLP: dated.some((x) => x.t === "LP" || x.t.startsWith("LIS")),
+    fetchedAt: today(),
+  };
+}
+
+function scoreDebt(s) {
+  if (!s) return null;
+  const yearsSince = (str) => (str ? (Date.now() - new Date(str).getTime()) / 31557600000 : null);
+  const held = yearsSince(s.deedDate);
+  const sinceMortgage = yearsSince(s.lastMortgageDate);
+  let pressure = 0, equity = 0;
+  const reasons = [];
+
+  if (s.hasLP) { pressure += 3; reasons.push("A lis pendens (lawsuit/foreclosure notice) is on file"); }
+  if (s.openMortgages >= 3) { pressure += 2; reasons.push(`${s.openMortgages} mortgages appear open (no payoff on record)`); }
+  else if (s.openMortgages === 2) { pressure += 1; reasons.push("Two mortgages appear open"); }
+  if (sinceMortgage !== null && sinceMortgage < 3) { pressure += 1; reasons.push("New borrowing against the property in the last 3 years"); }
+
+  if (held !== null && held >= 25) { equity += 3; reasons.push(`Owned for ${Math.floor(held)} years`); }
+  else if (held !== null && held >= 15) { equity += 2; reasons.push(`Owned for ${Math.floor(held)} years`); }
+  if (s.mortgageCount > 0 && s.openMortgages === 0) { equity += 2; reasons.push("Every recorded mortgage has been paid off"); }
+  if (s.mortgageCount === 0) { equity += 2; reasons.push("No mortgages on record at all"); }
+  if (sinceMortgage !== null && sinceMortgage > 10 && s.openMortgages === 0) { equity += 1; reasons.push("No new borrowing in over 10 years"); }
+
+  const value = Math.max(1, Math.min(5, 1 + Math.max(pressure, equity)));
+  const driver = pressure > equity ? "pressure" : equity > pressure ? "equity" : pressure ? "both" : "none";
+  return { value, driver, reasons };
+}
+
+const DRIVER_TEXT = {
+  pressure: "Driven by signs of financial pressure",
+  equity: "Driven by easy-exit equity (long-held, little debt)",
+  both: "Both financial pressure and easy-exit equity signals",
+  none: "Little signal either way in the debt history",
+};
+
+/* ---------- NYC data services ---------- */
 const ACRIS = {
   legals: "https://data.cityofnewyork.us/resource/8h5j-fqxa.json",
   master: "https://data.cityofnewyork.us/resource/bnx9-e6tj.json",
   parties: "https://data.cityofnewyork.us/resource/636b-3b5g.json",
 };
+const PLUTO_URL = "https://data.cityofnewyork.us/resource/64uk-42ks.json";
+const ASSESS_URL = "https://data.cityofnewyork.us/resource/yjxr-fw8i.json";
 
 async function fetchJSON(url) {
   const res = await fetch(url);
@@ -185,6 +269,76 @@ async function fetchByDocIds(base, ids, extra = "") {
   }
   return out;
 }
+
+async function fetchDebt(d) {
+  const bnum = BORO_NUM[d.borough];
+  if (!bnum || !d.block || !d.lot) throw new Error("needs borough, block, and lot");
+  const where = `borough='${bnum}' AND block='${Number(d.block)}' AND lot='${Number(d.lot)}'`;
+  const legals = await fetchJSON(`${ACRIS.legals}?$where=${encodeURIComponent(where)}&$limit=300`);
+  const ids = [...new Set(legals.map((l) => l.document_id))].slice(0, 200);
+  if (!ids.length) return summarizeMasters([]);
+  const masters = await fetchByDocIds(ACRIS.master, ids);
+  return summarizeMasters(masters);
+}
+
+async function fetchFacts(d) {
+  const bp = BORO_PLUTO[d.borough];
+  const bnum = BORO_NUM[d.borough];
+  if (!bp || !d.block || !d.lot) throw new Error("needs borough, block, and lot");
+  const rows = await fetchJSON(`${PLUTO_URL}?borough=${bp}&block=${Number(d.block)}&lot=${Number(d.lot)}&$limit=1`);
+  const p = rows[0];
+  if (!p) throw new Error("no city record found for this block & lot");
+
+  let taxClass = "";
+  try {
+    const arows = await fetchJSON(`${ASSESS_URL}?boro=${bnum}&block=${Number(d.block)}&lot=${Number(d.lot)}&$limit=1`);
+    const a = arows[0];
+    if (a) {
+      const key = Object.keys(a).find((k) => /tax.?class/i.test(k));
+      if (key) taxClass = a[key];
+    }
+  } catch (e) { /* tax class is best-effort */ }
+
+  return {
+    propertyType: BLDG_CLASS[(p.bldgclass || "")[0]] || "",
+    bldgClass: p.bldgclass || "",
+    zoning: [p.zonedist1, p.zonedist2].filter(Boolean).join(", "),
+    taxClass,
+    unitsRes: p.unitsres || "",
+    unitsTotal: p.unitstotal || "",
+    floors: p.numfloors || "",
+    yearBuilt: p.yearbuilt || "",
+    lotSqft: p.lotarea || "",
+    bldgSqft: p.bldgarea || "",
+    assessed: p.assesstot || "",
+    plutoOwner: p.ownername || "",
+    fetchedAt: today(),
+  };
+}
+
+async function refreshDeal(d) {
+  const [facts, debt] = await Promise.allSettled([fetchFacts(d), fetchDebt(d)]);
+  let okCount = 0;
+  if (facts.status === "fulfilled") {
+    d.facts = facts.value;
+    if (!d.owner && facts.value.plutoOwner) d.owner = facts.value.plutoOwner;
+    okCount++;
+  }
+  if (debt.status === "fulfilled") {
+    d.debt = debt.value;
+    d.score = scoreDebt(debt.value);
+    okCount++;
+  }
+  if (!okCount) {
+    const why = facts.reason?.message || debt.reason?.message || "unknown error";
+    throw new Error(why);
+  }
+  delete d.sample;
+  save();
+}
+
+/* ---------- ACRIS research tab ---------- */
+const RESULT_CACHE = new Map();
 
 let currentMode = "address";
 $("#search-mode").addEventListener("click", (e) => {
@@ -230,7 +384,6 @@ $("#search-form").addEventListener("submit", async (e) => {
       return;
     }
 
-    // group by property (borough-block-lot)
     const props = new Map();
     for (const l of legals) {
       const key = `${l.borough}-${l.block}-${l.lot}`;
@@ -274,22 +427,20 @@ function renderPropCard(p, masterById, partiesById) {
     .filter((d) => d.m)
     .sort((a, b) => (b.m.document_date || b.m.recorded_datetime || "").localeCompare(a.m.document_date || a.m.recorded_datetime || ""));
 
-  // likely current owner = party 2 on most recent deed
+  const cacheKey = `${p.borough}-${p.block}-${p.lot}`;
+  RESULT_CACHE.set(cacheKey, docs.map((d) => d.m));
+
   const lastDeed = docs.find((d) => ["DEED", "DEEDO"].includes(d.m.doc_type));
   const ownerNames = lastDeed
     ? lastDeed.pts.filter((x) => x.party_type === "2").map((x) => x.name).join(", ")
     : "";
-  const ownerAddr = lastDeed
-    ? (lastDeed.pts.find((x) => x.party_type === "2" && x.address_1)
-        ? [lastDeed.pts.find((x) => x.party_type === "2" && x.address_1).address_1,
-           lastDeed.pts.find((x) => x.party_type === "2" && x.address_1).city].filter(Boolean).join(", ")
-        : "")
-    : "";
+  const ownerParty = lastDeed ? lastDeed.pts.find((x) => x.party_type === "2" && x.address_1) : null;
+  const ownerAddr = ownerParty ? [ownerParty.address_1, ownerParty.city].filter(Boolean).join(", ") : "";
 
   const address = [...p.addresses][0] || `Block ${p.block}, Lot ${p.lot}`;
   const payload = esc(JSON.stringify({
     address, borough: BOROUGHS[p.borough] || p.borough, block: p.block, lot: p.lot,
-    owner: ownerNames, ownerAddress: ownerAddr,
+    owner: ownerNames, ownerAddress: ownerAddr, cacheKey,
   }));
 
   const docHtml = docs.slice(0, 10).map((d) => {
@@ -330,42 +481,109 @@ $("#search-results").addEventListener("click", (e) => {
   const data = JSON.parse(btn.dataset.payload);
   const exists = store.deals.some((d) => d.block === data.block && d.lot === data.lot && d.borough === data.borough);
   if (exists) { toast("Already in your pipeline"); return; }
-  store.deals.unshift({
+
+  const masters = RESULT_CACHE.get(data.cacheKey) || [];
+  const debt = masters.length ? summarizeMasters(masters) : null;
+  delete data.cacheKey;
+
+  const deal = {
     id: "d" + Date.now(), ...data,
     phone: "", email: "", stage: "New lead", notes: "", nextAction: "", nextDate: "",
     activity: [{ date: today(), text: "Added from ACRIS research" }],
-  });
+    debt, score: scoreDebt(debt),
+  };
+  store.deals.unshift(deal);
   save();
   toast(`${data.address} added to pipeline`);
   renderAll();
+
+  // pull property facts in the background
+  fetchFacts(deal).then((f) => {
+    deal.facts = f;
+    if (!deal.owner && f.plutoOwner) deal.owner = f.plutoOwner;
+    save();
+    renderAll();
+  }).catch(() => { /* user can refresh from the detail view */ });
 });
 
-/* ---------- pipeline ---------- */
+/* ---------- pipeline: list + detail ---------- */
 const stageFilter = $("#stage-filter");
 STAGES.forEach((s) => stageFilter.insertAdjacentHTML("beforeend", `<option>${s}</option>`));
 stageFilter.addEventListener("change", renderPipeline);
 
+let detailId = null;
+
 $("#add-manual").addEventListener("click", () => {
-  store.deals.unshift({
+  const deal = {
     id: "d" + Date.now(),
     address: "New property — edit me", borough: "", block: "", lot: "",
     owner: "", ownerAddress: "", phone: "", email: "",
     stage: "New lead", notes: "", nextAction: "", nextDate: "",
     activity: [{ date: today(), text: "Added manually" }],
-  });
+  };
+  store.deals.unshift(deal);
   save();
+  detailId = deal.id;
   renderPipeline();
 });
 
 function renderPipeline() {
+  const home = $("#pipeline-home");
+  const detail = $("#pipeline-detail");
+  const d = detailId && store.deals.find((x) => x.id === detailId);
+
+  if (d) {
+    home.classList.add("hidden");
+    detail.classList.remove("hidden");
+    detail.innerHTML = detailView(d);
+    detail.dataset.id = d.id;
+    return;
+  }
+  detailId = null;
+  home.classList.remove("hidden");
+  detail.classList.add("hidden");
+  detail.innerHTML = "";
+
   const filter = stageFilter.value;
-  const deals = store.deals.filter((d) => !filter || d.stage === filter);
-  $("#pipeline-list").innerHTML = deals.length ? deals.map(dealCard).join("")
-    : `<p class="empty-note">No properties here yet. Find one in Research, or add one manually.</p>`;
+  const deals = store.deals.filter((x) => !filter || x.stage === filter);
+  $("#pipeline-list").innerHTML = deals.length
+    ? deals.map(propRow).join("")
+    : `<p class="empty-note" style="padding:16px">No properties here yet. Find one in Research, or add one manually.</p>`;
 }
 
-function dealCard(d) {
-  return `<div class="card deal" data-stage="${esc(d.stage)}" data-id="${esc(d.id)}">
+function propRow(d) {
+  const s = d.score?.value;
+  return `<button class="prop-row" data-id="${esc(d.id)}" data-stage="${esc(d.stage)}">
+    <span class="pr-score s${s || 0}" title="Seller likelihood (from debt history)">${s || "–"}</span>
+    <span class="pr-main">
+      <b>${esc(d.address)}</b>
+      <span class="pr-sub">${esc(d.owner || "Owner unknown")}${d.sample ? " · sample" : ""}</span>
+    </span>
+    <span class="pr-stage">${esc(d.stage)}</span>
+    <span class="pr-due">${d.nextDate ? esc(fmtShort(d.nextDate)) : ""}</span>
+    <span class="pr-chev">›</span>
+  </button>`;
+}
+
+function factRow(label, value) {
+  return `<div class="fact"><span>${label}</span><b>${value || "—"}</b></div>`;
+}
+
+function detailView(d) {
+  const f = d.facts || {};
+  const s = d.score;
+  const scoreHtml = s
+    ? `<div class="score-line">
+         <span class="score-big">${s.value}<em>/5</em></span>
+         <span class="score-driver">${DRIVER_TEXT[s.driver] || ""}</span>
+       </div>
+       <ul class="score-reasons">${s.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`
+    : `<p class="empty-note">No debt history pulled yet — hit “Refresh city data” and the score will appear.</p>`;
+
+  return `
+  <button class="btn ghost small" id="detail-back">← All properties</button>
+
+  <div class="card detail-head">
     <div class="deal-head">
       <div>
         <div class="deal-addr" contenteditable="true" data-field="address">${esc(d.address)}</div>
@@ -373,43 +591,145 @@ function dealCard(d) {
           ${d.sample ? ` <span class="sample-tag">Sample</span>` : ""}</div>
       </div>
       <select class="stage-select" data-field="stage">
-        ${STAGES.map((s) => `<option ${s === d.stage ? "selected" : ""}>${s}</option>`).join("")}
+        ${STAGES.map((x) => `<option ${x === d.stage ? "selected" : ""}>${x}</option>`).join("")}
       </select>
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <div class="card score-card">
+      <h2 class="card-title">Seller likelihood</h2>
+      ${scoreHtml}
+      <p class="disclaimer">Read from public debt records only — a hint about who may be more open to a conversation, <b>not</b> a guarantee anyone wants to sell.</p>
+    </div>
+
+    <div class="card">
+      <div class="facts-head">
+        <h2 class="card-title">Property facts</h2>
+        <button class="btn ghost small" id="refresh-data">↻ Refresh city data</button>
+      </div>
+      <div class="facts-grid">
+        ${factRow("Property type", esc(f.propertyType))}
+        ${factRow("Building class", esc(f.bldgClass))}
+        ${factRow("Zoning", esc(f.zoning))}
+        ${factRow("Tax class", esc(f.taxClass))}
+        ${factRow("Units", esc(f.unitsRes && f.unitsTotal ? `${f.unitsRes} res / ${f.unitsTotal} total` : f.unitsTotal))}
+        ${factRow("Floors", esc(fmtNum(f.floors)))}
+        ${factRow("Year built", esc(f.yearBuilt))}
+        ${factRow("Lot size", f.lotSqft ? esc(fmtNum(f.lotSqft)) + " sq ft" : "")}
+        ${factRow("Building size", f.bldgSqft ? esc(fmtNum(f.bldgSqft)) + " sq ft" : "")}
+        ${factRow("Assessed value", esc(fmtMoney(f.assessed)))}
+      </div>
+      <p class="fine-print">${f.fetchedAt ? `From NYC city records (PLUTO &amp; Dept. of Finance) · updated ${fmtDate(f.fetchedAt)}` : "Nothing pulled yet — “Refresh city data” fills this in from NYC's databases."}</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="facts-head">
+      <h2 class="card-title">Owner &amp; contact</h2>
+      <span class="owner-actions">
+        ${d.phone ? `<a class="btn primary small" href="tel:${esc(d.phone.replace(/[^\d+]/g, ""))}">📞 Call</a>` : ""}
+        ${d.email ? `<a class="btn primary small" href="mailto:${esc(d.email.trim())}">✉ Email</a>` : ""}
+      </span>
     </div>
     <div class="deal-body">
       <label class="field"><span>Owner</span><input data-field="owner" value="${esc(d.owner)}" placeholder="Owner or LLC name"></label>
       <label class="field"><span>Owner mailing address</span><input data-field="ownerAddress" value="${esc(d.ownerAddress)}" placeholder="From the deed/mortgage"></label>
+      <label class="field"><span>Phone</span><input data-field="phone" value="${esc(d.phone || "")}" placeholder="(___) ___-____"></label>
+      <label class="field"><span>Email</span><input data-field="email" value="${esc(d.email || "")}" placeholder="name@example.com"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Plan</h2>
+    <div class="deal-body">
       <label class="field" style="grid-column:1/-1"><span>Notes</span><textarea data-field="notes" placeholder="Debt history, condition, motivation…">${esc(d.notes)}</textarea></label>
       <label class="field"><span>Next action</span><input data-field="nextAction" value="${esc(d.nextAction)}" placeholder="e.g. Send letter"></label>
       <label class="field"><span>Follow-up date</span><input type="date" data-field="nextDate" value="${esc(d.nextDate)}"></label>
     </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Activity</h2>
+    <div class="log-list">
+      ${(d.activity || []).slice(-8).reverse().map((a) =>
+        `<div class="row-item"><span>${esc(a.text)}</span><span class="when">${fmtDate(a.date)}</span></div>`).join("") || `<p class="empty-note">Nothing logged yet.</p>`}
+    </div>
+    <div class="log-input">
+      <input placeholder="Log a call, letter, or reply…" class="log-text">
+      <button class="btn ghost small log-add">Log it</button>
+    </div>
     <div class="deal-foot">
       <span class="spacer"></span>
-      <button class="btn ghost small deal-delete">Remove</button>
+      <button class="btn ghost small deal-delete">Remove property</button>
     </div>
   </div>`;
 }
 
-$("#pipeline-list").addEventListener("change", onDealEdit);
-$("#pipeline-list").addEventListener("focusout", onDealEdit);
+/* pipeline events */
 $("#pipeline-list").addEventListener("click", (e) => {
-  const del = e.target.closest(".deal-delete");
-  if (!del) return;
-  const card = del.closest(".deal");
-  const d = store.deals.find((x) => x.id === card.dataset.id);
-  if (!confirm(`Remove ${d.address} from your pipeline?`)) return;
-  store.deals = store.deals.filter((x) => x.id !== d.id);
-  save();
-  renderAll();
-  toast("Removed");
+  const row = e.target.closest(".prop-row");
+  if (!row) return;
+  detailId = row.dataset.id;
+  renderPipeline();
+  window.scrollTo({ top: 0 });
+});
+
+const detailEl = $("#pipeline-detail");
+detailEl.addEventListener("change", onDealEdit);
+detailEl.addEventListener("focusout", onDealEdit);
+detailEl.addEventListener("click", async (e) => {
+  const d = store.deals.find((x) => x.id === detailEl.dataset.id);
+
+  if (e.target.closest("#detail-back")) {
+    detailId = null;
+    renderPipeline();
+    return;
+  }
+  if (!d) return;
+
+  if (e.target.closest("#refresh-data")) {
+    const btn = e.target.closest("#refresh-data");
+    btn.disabled = true;
+    btn.textContent = "Pulling city records…";
+    try {
+      await refreshDeal(d);
+      renderPipeline();
+      toast("City data & score updated");
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = "↻ Refresh city data";
+      toast(`Couldn't refresh: ${err.message}`);
+    }
+    return;
+  }
+  if (e.target.closest(".log-add")) {
+    const input = $(".log-text", detailEl);
+    const text = input.value.trim();
+    if (!text) return;
+    (d.activity ||= []).push({ date: today(), text });
+    delete d.sample;
+    save();
+    renderPipeline();
+    toast("Logged");
+    return;
+  }
+  if (e.target.closest(".deal-delete")) {
+    if (!confirm(`Remove ${d.address} from your pipeline?`)) return;
+    store.deals = store.deals.filter((x) => x.id !== d.id);
+    detailId = null;
+    save();
+    renderAll();
+    toast("Removed");
+  }
 });
 
 function onDealEdit(e) {
   const el = e.target.closest("[data-field]");
   if (!el) return;
-  const card = el.closest(".deal, .owner-card");
-  if (!card) return;
-  const d = store.deals.find((x) => x.id === card.dataset.id);
+  const wrap = el.closest("[data-id]");
+  if (!wrap) return;
+  const d = store.deals.find((x) => x.id === wrap.dataset.id);
   if (!d) return;
   const val = el.matches("[contenteditable]") ? el.textContent.trim() : el.value;
   if (d[el.dataset.field] === val) return;
@@ -418,67 +738,15 @@ function onDealEdit(e) {
   delete d.sample;
   if (field === "stage") {
     (d.activity ||= []).push({ date: today(), text: `Moved to “${val}”` });
-    card.dataset.stage = val;
   }
   save();
-  // refresh Call/Email buttons when contact info changes on the Owners tab
-  if ((field === "phone" || field === "email") && e.type === "change" && card.classList.contains("owner-card")) {
-    renderOwners();
-  }
+  // refresh Call/Email buttons when contact info changes
+  if ((field === "phone" || field === "email") && e.type === "change") renderPipeline();
 }
-
-/* ---------- owners ---------- */
-function renderOwners() {
-  const deals = store.deals.filter((d) => d.stage !== "Dead");
-  $("#owners-list").innerHTML = deals.length ? deals.map((d) => `
-    <div class="card owner-card" data-id="${esc(d.id)}">
-      <div class="deal-head">
-        <div>
-          <div class="deal-addr">${esc(d.owner || "Owner unknown")}</div>
-          <div class="deal-meta">${esc(d.address)} · ${esc(d.stage)}</div>
-        </div>
-        <div class="owner-actions">
-          ${d.phone ? `<a class="btn primary small" href="tel:${esc(d.phone.replace(/[^\d+]/g, ""))}">📞 Call</a>` : ""}
-          ${d.email ? `<a class="btn primary small" href="mailto:${esc(d.email.trim())}">✉ Email</a>` : ""}
-        </div>
-      </div>
-      <div class="deal-body">
-        <label class="field"><span>Phone</span><input data-field="phone" value="${esc(d.phone || "")}" placeholder="(___) ___-____"></label>
-        <label class="field"><span>Email</span><input data-field="email" value="${esc(d.email || "")}" placeholder="name@example.com"></label>
-        <label class="field"><span>Mailing address</span><input data-field="ownerAddress" value="${esc(d.ownerAddress || "")}"></label>
-      </div>
-      <div class="log-list">
-        ${(d.activity || []).slice(-4).reverse().map((a) =>
-          `<div class="row-item"><span>${esc(a.text)}</span><span class="when">${fmtDate(a.date)}</span></div>`).join("")}
-      </div>
-      <div class="log-input">
-        <input placeholder="Log a call, letter, or reply…" class="log-text">
-        <button class="btn ghost small log-add">Log it</button>
-      </div>
-    </div>`).join("")
-    : `<p class="empty-note">Owners appear here once properties are in your pipeline.</p>`;
-}
-
-$("#owners-list").addEventListener("change", onDealEdit);
-$("#owners-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".log-add");
-  if (!btn) return;
-  const card = btn.closest(".owner-card");
-  const input = $(".log-text", card);
-  const text = input.value.trim();
-  if (!text) return;
-  const d = store.deals.find((x) => x.id === card.dataset.id);
-  (d.activity ||= []).push({ date: today(), text });
-  delete d.sample;
-  save();
-  renderOwners();
-  toast("Logged");
-});
 
 /* ---------- boot ---------- */
 function renderAll() {
   renderDashboard();
   renderPipeline();
-  renderOwners();
 }
 renderAll();

@@ -28,9 +28,6 @@
     <button class="tab" data-panel="panel-pipeline">
       <span class="tab-ico">≣</span><span>Pipeline</span>
     </button>
-    <button class="tab" data-panel="panel-owners">
-      <span class="tab-ico">✉</span><span>Owners</span>
-    </button>
   </nav>
   <p class="brand-tag">Off-market sourcing · ACRIS research · Owner outreach</p>
 </aside>
@@ -121,24 +118,21 @@
 
 <!-- ============ PIPELINE ============ -->
 <section class="panel" id="panel-pipeline">
-  <h1 class="panel-title">Deal pipeline</h1>
-  <p class="panel-sub">Every property you're chasing, from first look to closed.</p>
+  <div id="pipeline-home">
+    <h1 class="panel-title">Deal pipeline</h1>
+    <p class="panel-sub">Every property and owner you're chasing — click a row to open its full file.</p>
 
-  <div class="pipeline-toolbar">
-    <select id="stage-filter">
-      <option value="">All stages</option>
-    </select>
-    <button class="btn ghost" id="add-manual">+ Add property manually</button>
+    <div class="pipeline-toolbar">
+      <select id="stage-filter">
+        <option value="">All stages</option>
+      </select>
+      <button class="btn ghost" id="add-manual">+ Add property manually</button>
+    </div>
+
+    <div id="pipeline-list" class="prop-rows"></div>
   </div>
 
-  <div id="pipeline-list" class="stack"></div>
-</section>
-
-<!-- ============ OWNERS ============ -->
-<section class="panel" id="panel-owners">
-  <h1 class="panel-title">Owner outreach</h1>
-  <p class="panel-sub">Contact details and conversation history for every owner in the pipeline.</p>
-  <div id="owners-list" class="stack"></div>
+  <div id="pipeline-detail" class="hidden"></div>
 </section>
 
 </main>
