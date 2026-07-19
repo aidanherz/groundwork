@@ -27,18 +27,47 @@ body {
   min-height: 100vh;
 }
 
-/* ---------- header ---------- */
-.topbar {
-  padding: 26px 22px 14px;
-  max-width: 980px;
-  margin: 0 auto;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px;
+/* ---------- sidebar ---------- */
+.nav-toggle {
+  position: fixed;
+  top: 12px;
+  left: 14px;
+  z-index: 80;
+  width: 40px;
+  height: 40px;
+  border-radius: 9px;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  font-size: 1.05rem;
+  cursor: pointer;
 }
-.brand { display: flex; align-items: baseline; gap: 10px; }
+.nav-toggle:hover { border-color: var(--ink-faint); }
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 232px;
+  background: var(--paper-deep);
+  border-right: 1px solid var(--line);
+  padding: 66px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  transform: translateX(0);
+  transition: transform 0.22s ease;
+  z-index: 70;
+}
+body.nav-closed .sidebar { transform: translateX(-105%); }
+.backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 12, 8, 0.55);
+  z-index: 60;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; padding: 0 6px; }
 .brand-mark {
   font-family: var(--serif);
   font-size: 1.6rem;
@@ -52,46 +81,47 @@ body {
 }
 .brand-name em { font-style: italic; font-weight: 400; color: var(--moss); }
 .brand-tag {
-  font-size: 0.78rem;
+  margin-top: auto;
+  padding: 0 6px;
+  font-size: 0.75rem;
   color: var(--ink-faint);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  line-height: 1.7;
 }
 
-/* ---------- tabs ---------- */
-.tabs {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 0 22px;
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--line);
-}
+/* ---------- tabs (inside sidebar) ---------- */
+.tabs { display: flex; flex-direction: column; gap: 4px; }
 .tab {
   appearance: none;
   border: none;
   background: none;
   font-family: var(--sans);
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: var(--ink-soft);
-  padding: 10px 14px;
+  padding: 11px 12px;
   cursor: pointer;
-  border-bottom: 2.5px solid transparent;
-  margin-bottom: -1px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 11px;
+  border-radius: 8px;
+  width: 100%;
+  text-align: left;
 }
-.tab:hover { color: var(--ink); }
-.tab.active { color: var(--moss); border-bottom-color: var(--moss); }
-.tab-ico { font-size: 1rem; }
+.tab:hover { color: var(--ink); background: var(--card); }
+.tab.active { color: var(--moss); background: var(--card); }
+.tab-ico { font-size: 1.05rem; width: 1.2em; text-align: center; }
 
 /* ---------- layout ---------- */
 main {
   max-width: 980px;
   margin: 0 auto;
-  padding: 26px 22px 80px;
+  padding: 64px 22px 80px;
+}
+@media (min-width: 721px) {
+  body:not(.nav-closed) main,
+  body:not(.nav-closed) .site-foot { margin-left: 252px; margin-right: auto; }
 }
 .panel { display: none; }
 .panel.active { display: block; animation: rise 0.25s ease; }
@@ -346,7 +376,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .site-foot {
   max-width: 980px;
   margin: 0 auto;
-  padding: 18px 22px 90px;
+  padding: 18px 22px 32px;
   font-size: 0.76rem;
   color: var(--ink-faint);
   border-top: 1px solid var(--line);
@@ -355,7 +385,7 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .toast {
   position: fixed;
   left: 50%;
-  bottom: 84px;
+  bottom: 28px;
   transform: translateX(-50%) translateY(20px);
   background: var(--ink);
   color: var(--paper);
@@ -372,35 +402,11 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 
 /* ================= mobile ================= */
 @media (max-width: 720px) {
-  .topbar { padding-top: 18px; }
-  .brand-tag { display: none; }
+  body:not(.nav-closed) .backdrop { display: block; }
+  .sidebar { width: min(78vw, 280px); }
+  .tab.active { background: var(--card); }
 
-  .tabs {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    max-width: none;
-    background: var(--card);
-    border-top: 1px solid var(--line);
-    border-bottom: none;
-    padding: 4px 6px calc(6px + env(safe-area-inset-bottom));
-    justify-content: space-around;
-    z-index: 50;
-  }
-  .tab {
-    flex-direction: column;
-    gap: 2px;
-    font-size: 0.68rem;
-    padding: 6px 10px;
-    border-bottom: none;
-    margin-bottom: 0;
-    border-radius: 8px;
-  }
-  .tab.active { background: var(--paper-deep); }
-  .tab-ico { font-size: 1.15rem; }
-
-  main { padding-top: 18px; }
+  main { padding-top: 64px; }
   .two-col, .deal-body, .owner-card .deal-body { grid-template-columns: 1fr; }
   .stat-row { grid-template-columns: 1fr 1fr; }
   .search-form { flex-direction: column; align-items: stretch; }

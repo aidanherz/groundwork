@@ -11,28 +11,30 @@
 </head>
 <body>
 
-<header class="topbar">
+<button class="nav-toggle" id="nav-toggle" aria-label="Open or close the menu">☰</button>
+
+<aside class="sidebar" id="sidebar">
   <div class="brand">
     <span class="brand-mark">§</span>
     <span class="brand-name">Ground<em>work</em></span>
   </div>
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-panel="panel-dashboard">
+      <span class="tab-ico">◫</span><span>Overview</span>
+    </button>
+    <button class="tab" data-panel="panel-research">
+      <span class="tab-ico">⌕</span><span>Research</span>
+    </button>
+    <button class="tab" data-panel="panel-pipeline">
+      <span class="tab-ico">≣</span><span>Pipeline</span>
+    </button>
+    <button class="tab" data-panel="panel-owners">
+      <span class="tab-ico">✉</span><span>Owners</span>
+    </button>
+  </nav>
   <p class="brand-tag">Off-market sourcing · ACRIS research · Owner outreach</p>
-</header>
-
-<nav class="tabs" id="tabs">
-  <button class="tab active" data-panel="panel-dashboard">
-    <span class="tab-ico">◫</span><span>Overview</span>
-  </button>
-  <button class="tab" data-panel="panel-research">
-    <span class="tab-ico">⌕</span><span>Research</span>
-  </button>
-  <button class="tab" data-panel="panel-pipeline">
-    <span class="tab-ico">☰</span><span>Pipeline</span>
-  </button>
-  <button class="tab" data-panel="panel-owners">
-    <span class="tab-ico">✉</span><span>Owners</span>
-  </button>
-</nav>
+</aside>
+<div class="backdrop" id="backdrop"></div>
 
 <main>
 

@@ -104,6 +104,20 @@ function loadStore() {
 let store = loadStore();
 function save() { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
 
+/* ---------- sidebar ---------- */
+const NAV_KEY = "offbook.nav";
+const navToggle = $("#nav-toggle");
+const isPhone = () => window.matchMedia("(max-width: 720px)").matches;
+
+function setNav(open) {
+  document.body.classList.toggle("nav-closed", !open);
+  navToggle.textContent = open ? "✕" : "☰";
+  if (!isPhone()) localStorage.setItem(NAV_KEY, open ? "open" : "closed");
+}
+navToggle.addEventListener("click", () => setNav(document.body.classList.contains("nav-closed")));
+$("#backdrop").addEventListener("click", () => setNav(false));
+setNav(isPhone() ? false : localStorage.getItem(NAV_KEY) !== "closed");
+
 /* ---------- tabs ---------- */
 $("#tabs").addEventListener("click", (e) => {
   const btn = e.target.closest(".tab");
@@ -111,6 +125,7 @@ $("#tabs").addEventListener("click", (e) => {
   $$(".tab").forEach((t) => t.classList.toggle("active", t === btn));
   $$(".panel").forEach((p) => p.classList.toggle("active", p.id === btn.dataset.panel));
   renderAll();
+  if (isPhone()) setNav(false);
   window.scrollTo({ top: 0 });
 });
 
