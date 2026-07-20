@@ -285,6 +285,21 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 }
 .owner-chip b { color: var(--moss); }
 
+.entity-trace {
+  margin-top: 8px;
+  font-size: 0.83rem;
+  background: var(--paper-deep);
+  border-radius: 6px;
+  padding: 8px 11px;
+  color: var(--ink-soft);
+}
+.entity-trace .ent-line, .entity-detail .ent-line { display: block; margin-bottom: 3px; }
+.entity-detail { font-size: 0.9rem; color: var(--ink-soft); }
+.ent-line b { color: var(--ink); }
+.ent-dim { color: var(--ink-faint); font-size: 0.78rem; }
+.ent-miss { color: var(--ink-faint); font-style: italic; }
+.ent-miss a, .ent-dim a { color: var(--moss); font-weight: 600; }
+
 .doc-list { margin-top: 14px; border-top: 1px solid var(--line); }
 .doc {
   padding: 12px 0;

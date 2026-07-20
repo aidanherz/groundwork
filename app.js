@@ -330,12 +330,89 @@ async function refreshDeal(d) {
     d.score = scoreDebt(debt.value);
     okCount++;
   }
+  if (looksLikeEntity(d.owner)) {
+    const ent = await traceEntity(d.owner);
+    if (ent) { d.entity = ent; okCount++; }
+  }
   if (!okCount) {
     const why = facts.reason?.message || debt.reason?.message || "unknown error";
     throw new Error(why);
   }
   delete d.sample;
   save();
+}
+
+/* ---------- NY State business registry (automatic LLC tracing) ---------- */
+const CORP_URL = "https://data.ny.gov/resource/n9v6-gdp6.json";
+const ENTITY_CACHE = new Map();
+
+function looksLikeEntity(name) {
+  return /\b(LLC|L\.?L\.?C\.?|CORP\.?|INC\.?|LTD\.?|L\.?P\.?|LLP|TRUST|HOLDINGS?|REALTY|ASSOCIATES?|PARTNERS(HIP)?|GROUP|EQUITIES|PROPERTIES|VENTURES?)\b/i.test(name || "");
+}
+function normEntityName(n) {
+  return String(n || "").toUpperCase().replace(/[.,'’&/-]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+async function traceEntity(rawName) {
+  const key = normEntityName(rawName);
+  if (!key) return null;
+  if (ENTITY_CACHE.has(key)) return ENTITY_CACHE.get(key);
+  let match = null;
+  try {
+    const variants = [...new Set([
+      String(rawName).toUpperCase().trim(),
+      key,
+      key.replace(/ LLC$/, ", LLC"),
+      key.replace(/ LLC$/, ", LLC."),
+      key.replace(/ LLC$/, " L.L.C."),
+      key.replace(/ INC$/, ", INC."),
+      key.replace(/ CORP$/, " CORP."),
+    ])].filter(Boolean);
+    const where = `upper(current_entity_name) in(${variants.map((v) => `'${v.replace(/'/g, "''")}'`).join(",")})`;
+    let rows = await fetchJSON(`${CORP_URL}?$where=${encodeURIComponent(where)}&$limit=3`);
+    if (!rows.length) {
+      // full-text fallback, but only accept an exact match once punctuation is ignored
+      rows = (await fetchJSON(`${CORP_URL}?$q=${encodeURIComponent(key)}&$limit=8`))
+        .filter((r) => normEntityName(r.current_entity_name) === key);
+    }
+    const r = rows[0];
+    match = r ? {
+      status: "found",
+      name: r.current_entity_name,
+      dosId: r.dos_id || "",
+      filed: (r.initial_dos_filing_date || "").slice(0, 10),
+      county: r.county || "",
+      jurisdiction: r.jurisdiction || "",
+      entityType: titleCase(r.entity_type || ""),
+      processName: r.dos_process_name || "",
+      processAddr: [r.dos_process_address_1, r.dos_process_address_2, r.dos_process_city, r.dos_process_state, r.dos_process_zip].filter(Boolean).join(", "),
+      agentName: r.registered_agent_name || "",
+      agentAddr: [r.registered_agent_address_1, r.registered_agent_city, r.registered_agent_state, r.registered_agent_zip].filter(Boolean).join(", "),
+      fetchedAt: today(),
+    } : { status: "none", fetchedAt: today() };
+  } catch (e) {
+    return null; // network error — don't cache, allow retry
+  }
+  ENTITY_CACHE.set(key, match);
+  return match;
+}
+
+function entityHtml(ent) {
+  if (!ent) return `<span class="ent-miss">Registry lookup didn't go through — check your internet and try again.</span>`;
+  if (ent.status === "none") {
+    return `<span class="ent-miss">No exact match in the state's active-business registry — the entity may be dissolved, out-of-state, or spelled differently on file. <a href="https://apps.dos.ny.gov/publicInquiry/" target="_blank" rel="noopener">Check manually ↗</a></span>`;
+  }
+  return `<span class="ent-line"><b>State registry:</b> ${esc(ent.entityType || "Registered entity")}${ent.filed ? ` · registered ${fmtDate(ent.filed)}` : ""}${ent.county ? ` · ${esc(ent.county)} County` : ""}${ent.jurisdiction && ent.jurisdiction !== "New York" ? ` · formed in ${esc(ent.jurisdiction)}` : ""}</span>
+    ${ent.processAddr ? `<span class="ent-line">Legal papers go to: <b>${esc(ent.processName || ent.name)}</b>, ${esc(ent.processAddr)}</span>` : ""}
+    ${ent.agentName ? `<span class="ent-line">Registered agent: <b>${esc(ent.agentName)}</b>${ent.agentAddr ? `, ${esc(ent.agentAddr)}` : ""}</span>` : ""}
+    ${ent.dosId ? `<span class="ent-line ent-dim">DOS ID ${esc(ent.dosId)} · <a href="https://apps.dos.ny.gov/publicInquiry/" target="_blank" rel="noopener">full state record ↗</a></span>` : ""}`;
+}
+
+async function fillEntityTraces(container) {
+  for (const el of $$(".entity-trace", container)) {
+    const ent = await traceEntity(el.dataset.entity);
+    el.innerHTML = entityHtml(ent);
+  }
 }
 
 /* ---------- ACRIS research tab ---------- */
@@ -411,6 +488,7 @@ $("#search-form").addEventListener("submit", async (e) => {
     results.innerHTML = [...props.values()].slice(0, 12)
       .map((p) => renderPropCard(p, masterById, partiesById)).join("");
     status.textContent = `Showing ${Math.min(props.size, 12)} of ${props.size} propert${props.size === 1 ? "y" : "ies"}.`;
+    fillEntityTraces(results);
   } catch (err) {
     status.innerHTML = `<span class="err">Couldn't reach the NYC data service (${esc(err.message)}). Check your internet and try again.</span>`;
   } finally {
@@ -469,6 +547,7 @@ function renderPropCard(p, masterById, partiesById) {
         <div class="prop-addr">${esc(address)}</div>
         <div class="prop-bbl">${BOROUGHS[p.borough] || ""} · Block ${esc(p.block)} · Lot ${esc(p.lot)} · ${docs.length} recorded document${docs.length === 1 ? "" : "s"}</div>
         ${ownerNames ? `<div class="owner-chip">Likely current owner: <b>${esc(ownerNames)}</b></div>` : ""}
+        ${ownerNames && looksLikeEntity(ownerNames) ? `<div class="entity-trace" data-entity="${esc(ownerNames)}">Checking NY State business registry…</div>` : ""}
       </div>
       <button class="btn ghost small add-to-pipeline" data-payload="${payload}">+ Track in pipeline</button>
     </div>
@@ -492,6 +571,7 @@ $("#search-results").addEventListener("click", (e) => {
     phone: "", email: "", stage: "New lead", notes: "", nextAction: "", nextDate: "",
     activity: [{ date: today(), text: "Added from ACRIS research" }],
     debt, score: scoreDebt(debt),
+    entity: ENTITY_CACHE.get(normEntityName(data.owner)) || null,
   };
   store.deals.unshift(deal);
   save();
@@ -1142,6 +1222,12 @@ function detailView(d) {
       <label class="field"><span>Email</span><input data-field="email" value="${esc(d.email || "")}" placeholder="name@example.com"></label>
     </div>
   </div>
+
+  ${(d.entity || looksLikeEntity(d.owner)) ? `<div class="card">
+    <h2 class="card-title">LLC / entity trace</h2>
+    <div class="entity-detail">${d.entity ? entityHtml(d.entity) : `<p class="empty-note">Hit “↻ Refresh city data” above and Groundwork will check the NY State business registry for this owner.</p>`}</div>
+    <p class="fine-print">Looked up automatically in the NY Department of State business registry${d.entity?.fetchedAt ? ` · updated ${fmtDate(d.entity.fetchedAt)}` : ""}.</p>
+  </div>` : ""}
 
   <div class="card">
     <h2 class="card-title">Plan</h2>
