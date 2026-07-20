@@ -123,11 +123,17 @@
     <p class="panel-sub">Every property and owner you're chasing — click a row to open its full file.</p>
 
     <div class="pipeline-toolbar">
-      <select id="stage-filter">
-        <option value="">All stages</option>
-      </select>
+      <div class="toolbar-left">
+        <select id="stage-filter">
+          <option value="">All stages</option>
+        </select>
+        <button class="btn ghost" id="filter-toggle">⚲ Filters</button>
+      </div>
       <button class="btn ghost" id="add-manual">+ Add property manually</button>
     </div>
+
+    <div id="filter-panel" class="card hidden"></div>
+    <p id="filter-note" class="empty-note filter-note hidden"></p>
 
     <div id="pipeline-list" class="prop-rows"></div>
   </div>

@@ -364,6 +364,117 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 
 /* ---------- pipeline: compact rows ---------- */
 .hidden { display: none !important; }
+.toolbar-left { display: flex; gap: 10px; align-items: center; }
+.filters-on { border-color: var(--moss); color: var(--moss); }
+.filter-note { margin: -6px 0 12px; }
+
+/* ---------- filter panel (Crexi-style) ---------- */
+#filter-panel { margin-bottom: 16px; }
+.filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: 20px;
+}
+.filter-h {
+  font-family: var(--serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--ink-soft);
+}
+.filter-col { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.msel { border: 1px solid var(--line); border-radius: 8px; background: var(--paper-deep); }
+.msel > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.msel > summary::-webkit-details-marker { display: none; }
+.msel > summary::after { content: "▾"; margin-left: auto; color: var(--ink-faint); font-size: 0.8rem; }
+.msel[open] > summary::after { content: "▴"; }
+.msel-count { color: var(--moss); font-weight: 700; }
+.msel-list { max-height: 260px; overflow-y: auto; padding: 4px 6px 8px; border-top: 1px solid var(--line); }
+
+.msel-opt {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  font-size: 0.86rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.msel-opt:hover { background: var(--card); }
+.msel-opt input { accent-color: var(--moss-bright); width: 15px; height: 15px; flex: none; }
+
+.boro-item { margin-bottom: 2px; }
+.boro-row b { font-family: var(--serif); font-size: 0.92rem; }
+.hood-sub { margin-left: 30px; }
+.hood-sub > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.76rem;
+  color: var(--ink-faint);
+  padding: 2px 0 6px;
+  user-select: none;
+}
+.hood-sub > summary::-webkit-details-marker { display: none; }
+.hood-sub > summary::before { content: "▸ "; }
+.hood-sub[open] > summary::before { content: "▾ "; }
+.hood-opt { padding: 4px 8px; font-size: 0.83rem; }
+
+.group-item { margin: 1px 0; }
+.group-row { padding: 4px 8px; font-size: 0.85rem; font-weight: 600; }
+.group-sub { margin-left: 32px; }
+.group-sub > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.73rem;
+  color: var(--ink-faint);
+  padding: 1px 0 4px;
+  user-select: none;
+}
+.group-sub > summary::-webkit-details-marker { display: none; }
+.group-sub > summary::before { content: "▸ "; }
+.group-sub[open] > summary::before { content: "▾ "; }
+.sub-opt { padding: 3px 8px; font-size: 0.81rem; }
+
+.range-row {
+  display: grid;
+  grid-template-columns: 1fr 78px 12px 78px;
+  align-items: center;
+  gap: 8px;
+}
+.range-label { font-size: 0.84rem; color: var(--ink-soft); font-weight: 600; }
+.range-row input {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  color: #1b2b20;
+  background: #f7f3e3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 8px;
+  width: 100%;
+  min-width: 0;
+}
+.range-dash { color: var(--ink-faint); text-align: center; }
+
+.filter-foot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.filter-foot .spacer { flex: 1; }
 
 .prop-rows {
   background: var(--card);
@@ -524,8 +635,10 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
   .tab.active { background: var(--card); }
 
   main { padding-top: 64px; }
-  .two-col, .deal-body, .detail-grid, .facts-grid { grid-template-columns: 1fr; }
+  .two-col, .deal-body, .detail-grid, .facts-grid, .filter-grid { grid-template-columns: 1fr; }
   .pr-stage { display: none; }
+  .toolbar-left { width: 100%; }
+  .toolbar-left select, .toolbar-left .btn { flex: 1; }
   .stat-row { grid-template-columns: 1fr 1fr; }
   .search-form { flex-direction: column; align-items: stretch; }
   .mode-fields { flex-direction: column; }
