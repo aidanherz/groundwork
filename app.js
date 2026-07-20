@@ -568,7 +568,7 @@ $("#search-results").addEventListener("click", (e) => {
 
   const deal = {
     id: "d" + Date.now(), ...data,
-    phone: "", email: "", stage: "New lead", notes: "", nextAction: "", nextDate: "",
+    phone: "", email: "", stage: "New lead", notes: "", nextAction: "", nextDate: defaultNextDate(),
     activity: [{ date: today(), text: "Added from ACRIS research" }],
     debt, score: scoreDebt(debt),
     entity: ENTITY_CACHE.get(normEntityName(data.owner)) || null,
@@ -820,7 +820,7 @@ function typeOfDeal(d) {
 /* ---------- filters ---------- */
 const FILTER_KEY = "offbook.filters.v1";
 const EMPTY_FILTERS = () => ({
-  hoods: [], types: [], zoning: [], bldgClass: [], taxClass: [],
+  hoods: [], types: [], zoning: [], bldgClass: [], taxClass: [], scores: [],
   ranges: { units: [null, null], yearBuilt: [null, null], bldgSqft: [null, null], floors: [null, null], lotSqft: [null, null], assessed: [null, null] },
 });
 let FILTERS = EMPTY_FILTERS();
@@ -842,7 +842,7 @@ const RANGE_DEFS = [
 function activeFilterCount(F = FILTERS) {
   let n = 0;
   if (F.hoods.length) n++;
-  for (const k of ["types", "zoning", "bldgClass", "taxClass"]) if (F[k].length) n++;
+  for (const k of ["types", "zoning", "bldgClass", "taxClass", "scores"]) if (F[k].length) n++;
   for (const k in F.ranges) if (F.ranges[k][0] != null || F.ranges[k][1] != null) n++;
   return n;
 }
@@ -866,6 +866,11 @@ function dealFilterResult(d, F = FILTERS) {
     }
   }
 
+  if (F.scores && F.scores.length) {
+    const s = d.score?.value;
+    if (!s) return "missing";
+    if (!F.scores.includes(String(s))) return "no";
+  }
   if (F.types.length) {
     const t = typeOfDeal(d);
     if (!t) return "missing";
@@ -974,6 +979,15 @@ function renderFilterPanel() {
       </div>
       <div class="filter-col">
         <h3 class="filter-h">Property</h3>
+        <div class="score-filter">
+          <span class="score-filter-label">Seller likelihood</span>
+          <div class="score-chips">
+            ${[1, 2, 3, 4, 5].map((n) => `<label class="score-chip s${n}">
+              <input type="checkbox" data-filter="scores" value="${n}" ${F.scores?.includes(String(n)) ? "checked" : ""}>
+              <span>${n}</span>
+            </label>`).join("")}
+          </div>
+        </div>
         ${mselSection("types", "Property type", TYPE_LIST.map((v) => ({ v, l: v })), F.types)}
         ${mselSection("zoning", "Zoning", zoningOpts, F.zoning)}
         ${mselSection("bldgClass", "Building class", classOpts, F.bldgClass)}
@@ -1018,7 +1032,7 @@ function syncBoroCheckbox(item) {
 function readFiltersFromPanel() {
   const panel = $("#filter-panel");
   const F = EMPTY_FILTERS();
-  for (const id of ["hoods", "types", "zoning", "bldgClass", "taxClass"])
+  for (const id of ["hoods", "types", "zoning", "bldgClass", "taxClass", "scores"])
     F[id] = $$(`[data-filter="${id}"]:checked`, panel).map((b) => b.value);
   for (const inp of $$("[data-range]", panel)) {
     const v = inp.value.trim();
@@ -1080,7 +1094,7 @@ $("#add-manual").addEventListener("click", () => {
     id: "d" + Date.now(),
     address: "New property — edit me", borough: "", block: "", lot: "",
     owner: "", ownerAddress: "", phone: "", email: "",
-    stage: "New lead", notes: "", nextAction: "", nextDate: "",
+    stage: "New lead", notes: "", nextAction: "", nextDate: defaultNextDate(),
     activity: [{ date: today(), text: "Added manually" }],
   };
   store.deals.unshift(deal);
@@ -1333,9 +1347,146 @@ function onDealEdit(e) {
   if ((field === "phone" || field === "email") && e.type === "change") renderPipeline();
 }
 
+/* ---------- settings ---------- */
+const SETTINGS_KEY = "offbook.settings.v1";
+const DEFAULT_SETTINGS = { borough: "", followupDays: "" };
+let SETTINGS = { ...DEFAULT_SETTINGS };
+try {
+  const s = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+  if (s) SETTINGS = { ...DEFAULT_SETTINGS, ...s };
+} catch (e) { /* ignore */ }
+function saveSettings() { localStorage.setItem(SETTINGS_KEY, JSON.stringify(SETTINGS)); }
+
+function defaultNextDate() {
+  const n = Number(SETTINGS.followupDays);
+  return SETTINGS.followupDays !== "" && !isNaN(n) ? addDays(n) : "";
+}
+
+// apply default borough to the search form
+if (SETTINGS.borough && $("#f-borough")) $("#f-borough").value = SETTINGS.borough;
+
+function bytesLabel(n) {
+  if (n < 1024) return `${n} bytes`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function renderSettings() {
+  $("#set-borough").value = SETTINGS.borough;
+  $("#set-followup").value = SETTINGS.followupDays;
+
+  const raw = localStorage.getItem(STORE_KEY) || "";
+  const bytes = new Blob([raw]).size;
+  const total = store.deals.length;
+  const samples = store.deals.filter((d) => d.sample).length;
+  $("#storage-info").innerHTML = `
+    <div class="fact"><span>Properties saved</span><b>${total}${samples ? ` (${samples} sample)` : ""}</b></div>
+    <div class="fact"><span>Space used</span><b>${bytesLabel(bytes)}</b></div>
+    <p class="fine-print" style="grid-column:1/-1;margin-top:6px">Everything is stored privately in this browser on this device — nothing is uploaded to any server. Clearing your browser's site data would erase it, so keep a backup.</p>`;
+}
+
+$("#set-borough").addEventListener("change", (e) => {
+  SETTINGS.borough = e.target.value;
+  saveSettings();
+  if ($("#f-borough")) $("#f-borough").value = SETTINGS.borough;
+  toast("Default borough saved");
+});
+$("#set-followup").addEventListener("change", (e) => {
+  SETTINGS.followupDays = e.target.value.trim();
+  saveSettings();
+  toast("Follow-up default saved");
+});
+
+$("#set-backup").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `groundwork-backup-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("Backup downloaded");
+});
+
+$("#set-restore").addEventListener("click", () => $("#restore-file").click());
+$("#restore-file").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!data || !Array.isArray(data.deals)) throw new Error("not a Groundwork backup");
+      if (!confirm(`Restore ${data.deals.length} propert${data.deals.length === 1 ? "y" : "ies"} from this backup? This replaces your current pipeline.`)) return;
+      store = data;
+      save();
+      renderAll();
+      renderSettings();
+      toast("Backup restored");
+    } catch (err) {
+      toast(`Couldn't read that file — ${err.message}`);
+    }
+    e.target.value = "";
+  };
+  reader.readAsText(file);
+});
+
+$("#set-csv").addEventListener("click", () => {
+  const cols = [
+    ["Address", (d) => d.address], ["Borough", (d) => d.borough],
+    ["Block", (d) => d.block], ["Lot", (d) => d.lot],
+    ["Neighborhood", (d) => hoodOf(d)], ["Owner", (d) => d.owner],
+    ["Owner mailing address", (d) => d.ownerAddress], ["Phone", (d) => d.phone],
+    ["Email", (d) => d.email], ["Stage", (d) => d.stage],
+    ["Seller score", (d) => d.score?.value || ""], ["Property type", (d) => typeOfDeal(d)],
+    ["Zoning", (d) => d.facts?.zoning], ["Building class", (d) => d.facts?.bldgClass],
+    ["Tax class", (d) => d.facts?.taxClass], ["Units", (d) => d.facts?.unitsTotal],
+    ["Year built", (d) => d.facts?.yearBuilt], ["Building sqft", (d) => d.facts?.bldgSqft],
+    ["Lot sqft", (d) => d.facts?.lotSqft], ["Assessed value", (d) => d.facts?.assessed],
+    ["Entity type", (d) => d.entity?.entityType], ["Entity service address", (d) => d.entity?.processAddr],
+    ["Next action", (d) => d.nextAction], ["Follow-up date", (d) => d.nextDate],
+    ["Notes", (d) => d.notes],
+  ];
+  const cell = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = [cols.map((c) => cell(c[0])).join(",")];
+  for (const d of store.deals) rows.push(cols.map((c) => cell(c[1](d))).join(","));
+  const blob = new Blob(["﻿" + rows.join("\r\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `groundwork-pipeline-${today()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast("Spreadsheet exported");
+});
+
+$("#set-clear-samples").addEventListener("click", () => {
+  const n = store.deals.filter((d) => d.sample).length;
+  if (!n) { toast("No sample properties to remove"); return; }
+  if (!confirm(`Remove the ${n} sample propert${n === 1 ? "y" : "ies"}? Your own properties are untouched.`)) return;
+  store.deals = store.deals.filter((d) => !d.sample);
+  save();
+  renderAll();
+  renderSettings();
+  toast("Sample properties removed");
+});
+
+$("#set-clear-all").addEventListener("click", () => {
+  if (!confirm("Delete your ENTIRE pipeline and start fresh? This cannot be undone.")) return;
+  if (!confirm("Are you sure? Everything will be permanently erased.")) return;
+  store = { deals: [] };
+  save();
+  detailId = null;
+  renderAll();
+  renderSettings();
+  toast("All data deleted");
+});
+
 /* ---------- boot ---------- */
 function renderAll() {
   renderDashboard();
   renderPipeline();
+  if ($("#panel-settings").classList.contains("active")) renderSettings();
 }
+renderSettings();
 renderAll();

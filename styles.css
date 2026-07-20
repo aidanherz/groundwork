@@ -260,6 +260,8 @@ main {
   color: var(--ink-soft);
 }
 .btn.ghost:hover { border-color: var(--ink-faint); color: var(--ink); }
+.btn.danger { background: none; border-color: var(--err); color: var(--err); }
+.btn.danger:hover { background: var(--err); color: var(--paper); }
 .btn.small { padding: 6px 12px; font-size: 0.8rem; }
 .btn:disabled { opacity: 0.55; cursor: wait; }
 a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
@@ -461,6 +463,48 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .group-sub[open] > summary::before { content: "▾ "; }
 .sub-opt { padding: 3px 8px; font-size: 0.81rem; }
 
+.score-filter { margin-bottom: 4px; }
+.score-filter-label {
+  display: block;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+  margin-bottom: 7px;
+}
+.score-chips { display: flex; gap: 7px; }
+.score-chip {
+  position: relative;
+  flex: 1;
+  cursor: pointer;
+}
+.score-chip input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.score-chip span {
+  display: grid;
+  place-items: center;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-deep);
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: var(--ink-soft);
+}
+.score-chip:hover span { border-color: var(--ink-faint); }
+.score-chip input:checked + span {
+  background: var(--moss);
+  border-color: var(--moss);
+  color: #16291f;
+}
+.score-chip input:focus-visible + span { outline: 2px solid var(--moss-bright); outline-offset: 1px; }
+
 .range-row {
   display: grid;
   grid-template-columns: 1fr 78px 12px 78px;
@@ -611,6 +655,13 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .log-list .row-item { padding: 6px 0; }
 .log-input { display: flex; gap: 8px; margin-top: 10px; }
 .log-input input { flex: 1; }
+
+/* ---------- settings ---------- */
+#panel-settings .card { margin-bottom: 14px; }
+.settings-note { font-size: 0.88rem; color: var(--ink-soft); margin-bottom: 12px; }
+.settings-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.storage-info { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 18px; }
+.danger-card { border-color: var(--err); }
 
 /* ---------- misc ---------- */
 .hint-card { margin-top: 22px; background: var(--paper-deep); border-color: var(--line); }

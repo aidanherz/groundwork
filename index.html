@@ -28,6 +28,9 @@
     <button class="tab" data-panel="panel-pipeline">
       <span class="tab-ico">≣</span><span>Pipeline</span>
     </button>
+    <button class="tab" data-panel="panel-settings">
+      <span class="tab-ico">⚙</span><span>Settings</span>
+    </button>
   </nav>
   <p class="brand-tag">Off-market sourcing · ACRIS research · Owner outreach</p>
 </aside>
@@ -138,6 +141,59 @@
   </div>
 
   <div id="pipeline-detail" class="hidden"></div>
+</section>
+
+<!-- ============ SETTINGS ============ -->
+<section class="panel" id="panel-settings">
+  <h1 class="panel-title">Settings</h1>
+  <p class="panel-sub">Manage your data, defaults, and backups.</p>
+
+  <div class="card">
+    <h2 class="card-title">Search defaults</h2>
+    <div class="deal-body">
+      <label class="field">
+        <span>Default borough for searches</span>
+        <select id="set-borough">
+          <option value="">All boroughs</option>
+          <option value="1">Manhattan</option>
+          <option value="2">Bronx</option>
+          <option value="3">Brooklyn</option>
+          <option value="4">Queens</option>
+          <option value="5">Staten Island</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Default follow-up window (days)</span>
+        <input id="set-followup" type="number" inputmode="numeric" min="0" max="365" placeholder="7">
+      </label>
+    </div>
+    <p class="fine-print">New leads you add get a follow-up date this many days out. Leave blank for no automatic date.</p>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Backup &amp; restore</h2>
+    <p class="settings-note">Your pipeline lives only in this browser. Download a backup regularly — it's also how you move your data to another device.</p>
+    <div class="settings-actions">
+      <button class="btn primary small" id="set-backup">⤓ Download backup</button>
+      <button class="btn ghost small" id="set-restore">⤒ Restore from backup</button>
+      <button class="btn ghost small" id="set-csv">⊞ Export to spreadsheet (CSV)</button>
+    </div>
+    <input type="file" id="restore-file" accept="application/json,.json" hidden>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">Storage</h2>
+    <div id="storage-info" class="storage-info"></div>
+  </div>
+
+  <div class="card danger-card">
+    <h2 class="card-title">Clear data</h2>
+    <div class="settings-actions">
+      <button class="btn ghost small" id="set-clear-samples">Remove sample properties</button>
+      <button class="btn danger small" id="set-clear-all">Delete everything</button>
+    </div>
+    <p class="fine-print">“Remove sample properties” deletes only the three built-in examples. “Delete everything” wipes your entire pipeline and starts fresh — download a backup first if you're unsure.</p>
+  </div>
 </section>
 
 </main>
