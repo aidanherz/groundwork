@@ -656,6 +656,45 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .log-input { display: flex; gap: 8px; margin-top: 10px; }
 .log-input input { flex: 1; }
 
+/* ---------- contact lookup (Tavily) ---------- */
+.contact-lookup { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.find-title { font-family: var(--serif); font-size: 1.02rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.find-tag {
+  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--ink-faint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px;
+}
+.findings { margin-top: 12px; font-size: 0.88rem; color: var(--ink-soft); }
+.find-warn {
+  font-size: 0.8rem; font-weight: 600; color: var(--warn);
+  background: rgba(201,162,90,0.1); border-radius: 6px; padding: 7px 10px; margin-bottom: 12px;
+}
+.find-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; margin-bottom: 10px; }
+.find-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); }
+.find-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.find-chip {
+  font-family: var(--sans); font-size: 0.85rem; color: var(--ink);
+  background: var(--paper-deep); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 11px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.find-chip:hover { border-color: var(--moss-bright); }
+.find-chip em { font-style: normal; font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--moss); }
+.find-answer { background: var(--paper-deep); border-radius: 7px; padding: 10px 12px; margin: 10px 0; line-height: 1.5; }
+.find-sources { margin-top: 10px; }
+.find-src { padding: 7px 0; border-bottom: 1px dashed var(--line); }
+.find-src:last-child { border-bottom: none; }
+.find-src a { color: var(--moss); font-weight: 600; font-size: 0.86rem; display: block; }
+.find-src span { display: block; color: var(--ink-faint); font-size: 0.78rem; margin-top: 2px; }
+
+.tavily-status { margin-bottom: 12px; font-size: 0.9rem; }
+.tavily-on { color: var(--good); font-weight: 700; }
+.tavily-off { color: var(--ink-faint); font-weight: 700; }
+.tavily-entry { display: flex; flex-wrap: wrap; gap: 8px; }
+.tavily-entry input {
+  flex: 1; min-width: 220px;
+  font-family: var(--sans); font-size: 0.9rem; color: #1b2b20; background: #f7f3e3;
+  border: 1px solid var(--line); border-radius: 7px; padding: 9px 11px;
+}
+
 /* ---------- settings ---------- */
 #panel-settings .card { margin-bottom: 14px; }
 .settings-note { font-size: 0.88rem; color: var(--ink-soft); margin-bottom: 12px; }

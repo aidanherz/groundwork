@@ -415,6 +415,101 @@ async function fillEntityTraces(container) {
   }
 }
 
+/* ---------- Tavily contact lookup (find people behind an LLC) ---------- */
+const TAVILY_KEY = "offbook.tavily.key";
+const getTavilyKey = () => (localStorage.getItem(TAVILY_KEY) || "").trim();
+
+function extractEmails(text) {
+  const found = String(text || "").match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  return found
+    .map((e) => e.toLowerCase())
+    .filter((e) => !/\.(png|jpg|jpeg|gif|webp|svg|css|js)$/.test(e))
+    .filter((e) => !/(example|sentry|wixpress|\.png|no-?reply)/.test(e));
+}
+function extractPhones(text) {
+  const found = String(text || "").match(/(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]\d{3}[-.\s]\d{4}\b/g) || [];
+  const norm = (p) => p.replace(/[^\d]/g, "").replace(/^1(\d{10})$/, "$1");
+  const seen = new Set();
+  const out = [];
+  for (const p of found) {
+    const digits = norm(p);
+    if (digits.length !== 10) continue;
+    if (seen.has(digits)) continue;
+    seen.add(digits);
+    out.push(`(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`);
+  }
+  return out;
+}
+
+async function runContactLookup(entityName, context = "") {
+  const key = getTavilyKey();
+  if (!key) return { status: "nokey" };
+  const clean = String(entityName || "").trim();
+  if (!clean) return { status: "none" };
+
+  const query = `"${clean}" ${context} New York City LLC owner principal member manager registered agent contact email phone`.trim();
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        query,
+        search_depth: "advanced",
+        include_answer: "advanced",
+        max_results: 8,
+      }),
+    });
+    if (res.status === 401) return { status: "badkey" };
+    if (!res.ok) return { status: "error", message: `Tavily replied ${res.status}` };
+    const data = await res.json();
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    const blob = [data.answer || "", ...results.map((r) => r.content || "")].join("\n");
+    return {
+      status: "found",
+      answer: data.answer || "",
+      emails: extractEmails(blob).slice(0, 6),
+      phones: extractPhones(blob).slice(0, 6),
+      sources: results.slice(0, 6).map((r) => ({
+        title: r.title || r.url,
+        url: r.url,
+        snippet: (r.content || "").slice(0, 220),
+      })),
+      query,
+      fetchedAt: today(),
+    };
+  } catch (e) {
+    return { status: "error", message: e.message };
+  }
+}
+
+function chipRow(label, values, action) {
+  if (!values.length) return "";
+  return `<div class="find-row"><span class="find-label">${label}</span>
+    <span class="find-chips">${values.map((v) =>
+      `<button class="find-chip" data-fill="${action}" data-value="${esc(v)}">${esc(v)} <em>use</em></button>`).join("")}</span></div>`;
+}
+
+function findingsHtml(f) {
+  if (!f) return "";
+  if (f.status === "nokey") return `<p class="empty-note">Add your Tavily API key in <b>Settings</b> to look up owner contacts from the web.</p>`;
+  if (f.status === "badkey") return `<p class="ent-miss">That Tavily key was rejected — check it in Settings.</p>`;
+  if (f.status === "error") return `<p class="ent-miss">Lookup didn't go through (${esc(f.message || "network error")}). Try again.</p>`;
+  if (f.status === "none") return `<p class="empty-note">Nothing to search — no owner name on file yet.</p>`;
+
+  const nothing = !f.emails.length && !f.phones.length && !f.sources.length;
+  if (nothing) return `<p class="empty-note">The web search came back empty for this entity. It may be privately held or thinly documented online.</p>`;
+
+  return `
+    <p class="find-warn">⚠︎ Unverified — pulled from public web results. Confirm before relying on it.</p>
+    ${chipRow("Emails found", f.emails, "email")}
+    ${chipRow("Phones found", f.phones, "phone")}
+    ${f.answer ? `<div class="find-answer"><b>Summary:</b> ${esc(f.answer)}</div>` : ""}
+    ${f.sources.length ? `<div class="find-sources"><span class="find-label">Sources</span>
+      ${f.sources.map((s) => `<div class="find-src"><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)} ↗</a><span>${esc(s.snippet)}…</span></div>`).join("")}</div>` : ""}
+    <p class="fine-print">Searched: <span class="ent-dim">${esc(f.query)}</span> · ${f.fetchedAt ? fmtDate(f.fetchedAt) : ""}</p>`;
+}
+
 /* ---------- ACRIS research tab ---------- */
 const RESULT_CACHE = new Map();
 
@@ -1241,6 +1336,14 @@ function detailView(d) {
     <h2 class="card-title">LLC / entity trace</h2>
     <div class="entity-detail">${d.entity ? entityHtml(d.entity) : `<p class="empty-note">Hit “↻ Refresh city data” above and Groundwork will check the NY State business registry for this owner.</p>`}</div>
     <p class="fine-print">Looked up automatically in the NY Department of State business registry${d.entity?.fetchedAt ? ` · updated ${fmtDate(d.entity.fetchedAt)}` : ""}.</p>
+
+    <div class="contact-lookup">
+      <div class="facts-head">
+        <h3 class="find-title">Owner contacts <span class="find-tag">web search</span></h3>
+        <button class="btn ghost small" id="find-contacts">🔎 Find owner contacts</button>
+      </div>
+      <div class="findings">${d.contacts ? findingsHtml(d.contacts) : `<p class="empty-note">Searches the public web (via Tavily) for the people and contact details behind this owner. On-demand — nothing runs until you click.</p>`}</div>
+    </div>
   </div>` : ""}
 
   <div class="card">
@@ -1304,6 +1407,35 @@ detailEl.addEventListener("click", async (e) => {
       btn.textContent = "↻ Refresh city data";
       toast(`Couldn't refresh: ${err.message}`);
     }
+    return;
+  }
+  if (e.target.closest("#find-contacts")) {
+    const btn = e.target.closest("#find-contacts");
+    if (!getTavilyKey()) {
+      $(".findings", detailEl).innerHTML = findingsHtml({ status: "nokey" });
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Searching the web…";
+    const context = [d.borough, hoodOf(d)].filter(Boolean).join(" ");
+    const findings = await runContactLookup(d.owner, context);
+    d.contacts = findings;
+    (d.activity ||= []).push({ date: today(), text: "Ran web contact search" });
+    delete d.sample;
+    save();
+    renderPipeline();
+    if (findings.status === "found") toast("Contact search done");
+    return;
+  }
+  if (e.target.closest(".find-chip")) {
+    const chip = e.target.closest(".find-chip");
+    const field = chip.dataset.fill;
+    d[field] = chip.dataset.value;
+    (d.activity ||= []).push({ date: today(), text: `Set ${field} from web search: ${chip.dataset.value}` });
+    delete d.sample;
+    save();
+    renderPipeline();
+    toast(`${field === "email" ? "Email" : "Phone"} filled in`);
     return;
   }
   if (e.target.closest(".log-add")) {
@@ -1371,9 +1503,19 @@ function bytesLabel(n) {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+function renderTavilyStatus() {
+  const key = getTavilyKey();
+  const el = $("#tavily-status");
+  if (!el) return;
+  el.innerHTML = key
+    ? `<span class="tavily-on">● Connected</span> <span class="ent-dim">key ending …${esc(key.slice(-4))}</span>`
+    : `<span class="tavily-off">○ Not connected</span> <span class="ent-dim">contact lookup is off until you add a key</span>`;
+}
+
 function renderSettings() {
   $("#set-borough").value = SETTINGS.borough;
   $("#set-followup").value = SETTINGS.followupDays;
+  renderTavilyStatus();
 
   const raw = localStorage.getItem(STORE_KEY) || "";
   const bytes = new Blob([raw]).size;
@@ -1395,6 +1537,38 @@ $("#set-followup").addEventListener("change", (e) => {
   SETTINGS.followupDays = e.target.value.trim();
   saveSettings();
   toast("Follow-up default saved");
+});
+
+$("#tavily-save").addEventListener("click", () => {
+  const key = $("#tavily-key").value.trim();
+  if (!key) { toast("Paste a key first"); return; }
+  if (!/^tvly-/.test(key)) {
+    if (!confirm("That doesn't look like a Tavily key (they start with “tvly-”). Save it anyway?")) return;
+  }
+  localStorage.setItem(TAVILY_KEY, key);
+  $("#tavily-key").value = "";
+  renderTavilyStatus();
+  toast("Tavily key saved");
+});
+$("#tavily-remove").addEventListener("click", () => {
+  localStorage.removeItem(TAVILY_KEY);
+  $("#tavily-key").value = "";
+  renderTavilyStatus();
+  toast("Tavily key removed");
+});
+$("#tavily-test").addEventListener("click", async (e) => {
+  const typed = $("#tavily-key").value.trim();
+  if (typed) { localStorage.setItem(TAVILY_KEY, typed); $("#tavily-key").value = ""; renderTavilyStatus(); }
+  if (!getTavilyKey()) { toast("Add a key first"); return; }
+  const btn = e.target;
+  btn.disabled = true;
+  btn.textContent = "Testing…";
+  const f = await runContactLookup("Test Holdings LLC", "New York");
+  btn.disabled = false;
+  btn.textContent = "Test";
+  if (f.status === "badkey") toast("Key rejected — double-check it");
+  else if (f.status === "error") toast(`Couldn't reach Tavily: ${f.message}`);
+  else toast("Connection works ✓");
 });
 
 $("#set-backup").addEventListener("click", () => {

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
 
@@ -182,6 +182,19 @@
   </div>
 
   <div class="card">
+    <h2 class="card-title">Contact lookup (Tavily)</h2>
+    <p class="settings-note">Connect a <a href="https://tavily.com" target="_blank" rel="noopener">Tavily</a> API key to let Groundwork search the public web for the people and contact details behind an LLC owner. It runs only when you click “Find owner contacts” on a property.</p>
+    <div id="tavily-status" class="tavily-status"></div>
+    <div class="tavily-entry">
+      <input id="tavily-key" type="password" placeholder="tvly-…  (paste your Tavily API key)" autocomplete="off">
+      <button class="btn primary small" id="tavily-save">Save key</button>
+      <button class="btn ghost small" id="tavily-test">Test</button>
+      <button class="btn ghost small" id="tavily-remove">Remove</button>
+    </div>
+    <p class="fine-print">Your key is stored only in this browser, never in Groundwork's public code. Treat it like a saved password — anyone with access to this computer could read it. Tavily bills your account per search.</p>
+  </div>
+
+  <div class="card">
     <h2 class="card-title">Storage</h2>
     <div id="storage-info" class="storage-info"></div>
   </div>
@@ -204,6 +217,6 @@
 
 <div id="toast" class="toast"></div>
 
-<script src="app.js"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
