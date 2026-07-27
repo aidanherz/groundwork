@@ -192,20 +192,33 @@ function renderDashboard() {
 function summarizeMasters(masters) {
   const dated = masters
     .filter((m) => m && m.doc_type)
-    .map((m) => ({ t: m.doc_type, d: (m.document_date || m.recorded_datetime || "") }));
+    .map((m) => ({ t: m.doc_type, d: (m.document_date || m.recorded_datetime || "").slice(0, 10) }))
+    .filter((x) => x.d);
   const latestOf = (types) =>
     dated.filter((x) => types.includes(x.t)).sort((a, b) => b.d.localeCompare(a.d))[0];
   const deed = latestOf(["DEED", "DEEDO"]);
-  const mortgages = dated.filter((x) => ["MTGE", "CONS"].includes(x.t));
-  const satCount = dated.filter((x) => x.t === "SAT").length;
+  const deedDate = deed ? deed.d : "";
+
+  // Scope debt to the CURRENT owner: count only documents recorded on/after the
+  // latest deed (when they acquired). Prior owners' mortgages/liens are cleared
+  // at sale and shouldn't color this owner's picture. If no deed is on record we
+  // can't draw that line, so we fall back to the full history.
+  const ownerScoped = !!deedDate;
+  const inTenure = (x) => !ownerScoped || x.d >= deedDate;
+
+  const mortgages = dated.filter((x) => ["MTGE", "CONS"].includes(x.t) && inTenure(x));
+  const satCount = dated.filter((x) => x.t === "SAT" && inTenure(x)).length;
   const lastM = mortgages.slice().sort((a, b) => b.d.localeCompare(a.d))[0];
+  const hasLP = dated.some((x) => (x.t === "LP" || x.t.startsWith("LIS")) && inTenure(x));
+
   return {
-    deedDate: deed ? deed.d.slice(0, 10) : "",
+    deedDate,
+    ownerScoped,
     mortgageCount: mortgages.length,
     satCount,
     openMortgages: Math.max(0, mortgages.length - satCount),
-    lastMortgageDate: lastM ? lastM.d.slice(0, 10) : "",
-    hasLP: dated.some((x) => x.t === "LP" || x.t.startsWith("LIS")),
+    lastMortgageDate: lastM ? lastM.d : "",
+    hasLP,
     fetchedAt: today(),
   };
 }
@@ -215,18 +228,19 @@ function scoreDebt(s) {
   const yearsSince = (str) => (str ? (Date.now() - new Date(str).getTime()) / 31557600000 : null);
   const held = yearsSince(s.deedDate);
   const sinceMortgage = yearsSince(s.lastMortgageDate);
+  const own = s.ownerScoped ? "the current owner" : "the owner";
   let pressure = 0, equity = 0;
   const reasons = [];
 
   if (s.hasLP) { pressure += 3; reasons.push("A lis pendens (lawsuit/foreclosure notice) is on file"); }
-  if (s.openMortgages >= 3) { pressure += 2; reasons.push(`${s.openMortgages} mortgages appear open (no payoff on record)`); }
-  else if (s.openMortgages === 2) { pressure += 1; reasons.push("Two mortgages appear open"); }
+  if (s.openMortgages >= 3) { pressure += 2; reasons.push(`${s.openMortgages} mortgages ${own} took appear open (no payoff on record)`); }
+  else if (s.openMortgages === 2) { pressure += 1; reasons.push(`Two mortgages ${own} took appear open`); }
   if (sinceMortgage !== null && sinceMortgage < 3) { pressure += 1; reasons.push("New borrowing against the property in the last 3 years"); }
 
   if (held !== null && held >= 25) { equity += 3; reasons.push(`Owned for ${Math.floor(held)} years`); }
   else if (held !== null && held >= 15) { equity += 2; reasons.push(`Owned for ${Math.floor(held)} years`); }
-  if (s.mortgageCount > 0 && s.openMortgages === 0) { equity += 2; reasons.push("Every recorded mortgage has been paid off"); }
-  if (s.mortgageCount === 0) { equity += 2; reasons.push("No mortgages on record at all"); }
+  if (s.mortgageCount > 0 && s.openMortgages === 0) { equity += 2; reasons.push(`Every mortgage ${own} took has been paid off`); }
+  if (s.mortgageCount === 0) { equity += 2; reasons.push(s.ownerScoped ? "No mortgage taken since they bought it" : "No mortgages on record at all"); }
   if (sinceMortgage !== null && sinceMortgage > 10 && s.openMortgages === 0) { equity += 1; reasons.push("No new borrowing in over 10 years"); }
 
   const value = Math.max(1, Math.min(5, 1 + Math.max(pressure, equity)));
@@ -1389,7 +1403,7 @@ function detailView(d) {
     <div class="card score-card">
       <h2 class="card-title">Seller likelihood</h2>
       ${scoreHtml}
-      <p class="disclaimer">Read from public debt records only — a hint about who may be more open to a conversation, <b>not</b> a guarantee anyone wants to sell.</p>
+      <p class="disclaimer">Based only on debt recorded since the current owner acquired the property${d.debt?.deedDate ? ` (${fmtDate(d.debt.deedDate)})` : ""} — a hint about who may be more open to a conversation, <b>not</b> a guarantee anyone wants to sell.</p>
     </div>
 
     <div class="card">
