@@ -295,6 +295,120 @@ async function fetchDebt(d) {
   return summarizeMasters(masters);
 }
 
+/* Debt + the individual people named across the property's documents, in one pass. */
+async function fetchAcrisRecord(d) {
+  const bnum = BORO_NUM[d.borough];
+  if (!bnum || !d.block || !d.lot) throw new Error("needs borough, block, and lot");
+  const where = `borough='${bnum}' AND block='${Number(d.block)}' AND lot='${Number(d.lot)}'`;
+  const legals = await fetchJSON(`${ACRIS.legals}?$where=${encodeURIComponent(where)}&$limit=300`);
+  const ids = [...new Set(legals.map((l) => l.document_id))].slice(0, 200);
+  if (!ids.length) return { debt: summarizeMasters([]), people: [] };
+  const [masters, parties] = await Promise.all([
+    fetchByDocIds(ACRIS.master, ids),
+    fetchByDocIds(ACRIS.parties, ids),
+  ]);
+  return { debt: summarizeMasters(masters), people: extractPeople(masters, parties) };
+}
+
+/* ---------- pull individual people out of ACRIS parties ---------- */
+// Words that mark a party as an organization rather than a person.
+const ORG_RE = /(\bLLC\b|L\.?L\.?C|\bINC\b|\bCORP|\bCO\b|\bCOMPANY\b|\bLP\b|L\.?P\.?\b|\bLLP\b|\bLTD\b|\bTRUST\b|\bASSOC|\bPARTNER|\bHOLDING|\bREALTY\b|\bREAL EST|\bPROPERT|\bMANAG|\bMGMT\b|\bGROUP\b|\bFUND|\bCAPITAL\b|\bDEVELOP|\bVENTURE|\bENTERPRISE|\bBANK\b|\bN\.?A\.?\b|\bFSB\b|\bSAVINGS\b|\bMORTGAGE\b|\bFINANC|\bEQUITIES\b|\bINVEST|\bHOUSING\b|\bAUTHORITY\b|\bDEPART|\bDEPT\b|\bCOMMISSION|\bAGENCY\b|\bFOUNDATION\b|\bCHURCH\b|\bCONGREGATION\b|\bTEMPLE\b|\bCONDO|\bTENANT|\bPLAZA\b|\bTOWER|\bGARDEN|\bCITY OF\b|\bSTATE OF\b|\bUNITED STATES\b|\bFEDERAL\b|\bNYC\b|\bHPD\b|\bNYCTL\b|\bESTATE\b|&)/i;
+// Legal-role codes we skip entirely (referees, attorneys, guardians — not owners).
+const SKIP_ROLE = /\/(REF|ATT|ATTY|RE|GUARD|GDN)\b/i;
+
+function isOrgName(name) { return ORG_RE.test(String(name || "")); }
+
+/* Returns a clean display name if the party looks like a real person, else null. */
+function classifyPersonName(raw) {
+  const s = String(raw || "").trim();
+  if (!s || SKIP_ROLE.test(s)) return null;
+  const name = s.replace(/\/[A-Z]{2,6}\b\s*$/i, "").trim(); // drop trailing role code
+  if (isOrgName(name)) return null;
+  const toks = name.replace(/[.,]/g, " ").split(/\s+/).filter((t) => /^[A-Za-z][A-Za-z'’-]*$/.test(t));
+  if (toks.length < 2 || toks.length > 4) return null;      // people have 2–4 name parts
+  return name;
+}
+
+function personKey(name) {
+  return name.replace(/[.,]/g, " ").toUpperCase().split(/\s+/).filter(Boolean).sort().join(" ");
+}
+
+function partyRoleLabel(docType, pt) {
+  if (["DEED", "DEEDO"].includes(docType)) return pt === "1" ? "Seller" : "Buyer";
+  if (["MTGE", "CONS", "AGMT"].includes(docType)) return pt === "1" ? "Borrower" : "Lender";
+  if (docType === "SAT") return "Paid-off borrower";
+  return "Named";
+}
+
+function extractPeople(masters, parties) {
+  const mById = new Map(masters.map((m) => [m.document_id, m]));
+  const byDoc = new Map();
+  for (const p of parties) {
+    if (!byDoc.has(p.document_id)) byDoc.set(p.document_id, []);
+    byDoc.get(p.document_id).push(p);
+  }
+  const people = new Map();
+  for (const p of parties) {
+    const disp = classifyPersonName(p.name);
+    if (!disp) continue;
+    const m = mById.get(p.document_id);
+    const docType = m ? m.doc_type : "";
+    const date = m ? (m.document_date || m.recorded_datetime || "").slice(0, 10) : "";
+    const role = partyRoleLabel(docType, p.party_type);
+    // Strong signal: a person who is the seller/grantor on a deed whose buyer is an LLC/entity —
+    // i.e. someone who deeded the building into an entity (very often the principal behind it).
+    let strong = false;
+    if (["DEED", "DEEDO"].includes(docType) && p.party_type === "1") {
+      strong = (byDoc.get(p.document_id) || []).some((x) => x.party_type === "2" && isOrgName(x.name));
+    }
+    const key = personKey(disp);
+    if (!people.has(key)) people.set(key, { display: disp, apps: [], strong: false });
+    const rec = people.get(key);
+    const label = (DOC_TYPES[docType] ? DOC_TYPES[docType][0] : docType) || "document";
+    if (!rec.apps.some((a) => a.date === date && a.role === role && a.label === label)) {
+      rec.apps.push({ role, date, label });
+    }
+    if (strong) rec.strong = true;
+    if (disp.includes(",") && !rec.display.includes(",")) rec.display = disp; // prefer "LAST, FIRST"
+  }
+  const out = [...people.values()].map((pp) => {
+    pp.apps.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    pp.latest = pp.apps[0]?.date || "";
+    return pp;
+  });
+  out.sort((a, b) => (b.strong - a.strong) || (b.latest || "").localeCompare(a.latest || ""));
+  return out.slice(0, 12);
+}
+
+// "SYLVESTER, PATRICK" -> "Patrick Sylvester"
+function personDisplay(n) {
+  let s = String(n || "").trim();
+  if (s.includes(",")) { const [last, ...rest] = s.split(","); s = `${rest.join(",").trim()} ${last.trim()}`; }
+  return s.toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase()).replace(/\s+/g, " ").trim();
+}
+
+function shortDocLabel(label) {
+  return String(label || "document").split(" — ")[0].split(" (")[0];
+}
+
+function peopleHtml(d) {
+  const list = d.people || [];
+  if (!d.facts && !d.debt) return `<p class="empty-note">Hit “↻ Refresh city data” above and Groundwork will scan every deed and mortgage on file for the individuals named on them.</p>`;
+  if (!list.length) return `<p class="empty-note">No individual people appear in this property's structured records. It may have only ever passed between companies — in which case the person's name is written inside the scanned document images, not the data. Try the web lookups in “Owner &amp; contact,” or open the deeds in ACRIS.</p>`;
+  return `<p class="fine-print" style="margin:0 0 8px">Pulled from the names on every recorded deed and mortgage — the same trail you'd follow by hand. Roles are from public records; confirm before relying on them.</p>` +
+    list.map((pp) => {
+      const isPrincipal = d.principal && personKey(personDisplay(d.principal)) === personKey(personDisplay(pp.display));
+      const ctx = pp.apps.slice(0, 3).map((a) => `${a.role} on a ${esc(shortDocLabel(a.label))}${a.date ? ` (${fmtDate(a.date)})` : ""}`).join(" · ");
+      return `<div class="person-row">
+        <div class="person-main">
+          <b>${esc(personDisplay(pp.display))}</b>${pp.strong ? `<span class="person-badge">deeded it into an entity</span>` : ""}
+          <div class="person-ctx">${ctx}</div>
+        </div>
+        <button class="btn ghost small person-use ${isPrincipal ? "is-principal" : ""}" data-person="${esc(personDisplay(pp.display))}">${isPrincipal ? "★ Principal" : "Set as principal"}</button>
+      </div>`;
+    }).join("");
+}
+
 async function fetchFacts(d) {
   const bp = BORO_PLUTO[d.borough];
   const bnum = BORO_NUM[d.borough];
@@ -332,16 +446,17 @@ async function fetchFacts(d) {
 }
 
 async function refreshDeal(d) {
-  const [facts, debt] = await Promise.allSettled([fetchFacts(d), fetchDebt(d)]);
+  const [facts, acris] = await Promise.allSettled([fetchFacts(d), fetchAcrisRecord(d)]);
   let okCount = 0;
   if (facts.status === "fulfilled") {
     d.facts = facts.value;
     if (!d.owner && facts.value.plutoOwner) d.owner = facts.value.plutoOwner;
     okCount++;
   }
-  if (debt.status === "fulfilled") {
-    d.debt = debt.value;
-    d.score = scoreDebt(debt.value);
+  if (acris.status === "fulfilled") {
+    d.debt = acris.value.debt;
+    d.score = scoreDebt(acris.value.debt);
+    d.people = acris.value.people;
     okCount++;
   }
   if (looksLikeEntity(d.owner)) {
@@ -349,7 +464,7 @@ async function refreshDeal(d) {
     if (ent) { d.entity = ent; okCount++; }
   }
   if (!okCount) {
-    const why = facts.reason?.message || debt.reason?.message || "unknown error";
+    const why = facts.reason?.message || acris.reason?.message || "unknown error";
     throw new Error(why);
   }
   delete d.sample;
@@ -390,6 +505,7 @@ function looksLikePerson(name) {
 // then the owner itself if the owner is already a person. Only returns a name
 // that genuinely reads as a person, so we never search a company on a people site.
 function personBehind(d) {
+  if (d && d.principal) return String(d.principal).trim();
   const ent = d && d.entity;
   for (const c of [ent && ent.processName, ent && ent.agentName, d && d.owner]) {
     if (looksLikePerson(c)) return String(c).trim();
@@ -745,7 +861,8 @@ function renderPropCard(p, masterById, partiesById) {
     .sort((a, b) => (b.m.document_date || b.m.recorded_datetime || "").localeCompare(a.m.document_date || a.m.recorded_datetime || ""));
 
   const cacheKey = `${p.borough}-${p.block}-${p.lot}`;
-  RESULT_CACHE.set(cacheKey, docs.map((d) => d.m));
+  const cacheMasters = docs.map((d) => d.m);
+  RESULT_CACHE.set(cacheKey, { masters: cacheMasters, people: extractPeople(cacheMasters, docs.flatMap((d) => d.pts)) });
 
   const lastDeed = docs.find((d) => ["DEED", "DEEDO"].includes(d.m.doc_type));
   const ownerNames = lastDeed
@@ -800,15 +917,15 @@ $("#search-results").addEventListener("click", (e) => {
   const exists = store.deals.some((d) => d.block === data.block && d.lot === data.lot && d.borough === data.borough);
   if (exists) { toast("Already in your pipeline"); return; }
 
-  const masters = RESULT_CACHE.get(data.cacheKey) || [];
-  const debt = masters.length ? summarizeMasters(masters) : null;
+  const cached = RESULT_CACHE.get(data.cacheKey) || { masters: [], people: [] };
+  const debt = cached.masters.length ? summarizeMasters(cached.masters) : null;
   delete data.cacheKey;
 
   const deal = {
     id: "d" + Date.now(), ...data,
     phone: "", email: "", stage: "New lead", notes: "", nextAction: "", nextDate: defaultNextDate(),
     activity: [{ date: today(), text: "Added from ACRIS research" }],
-    debt, score: scoreDebt(debt),
+    debt, score: scoreDebt(debt), people: cached.people || [],
     entity: ENTITY_CACHE.get(normEntityName(data.owner)) || null,
   };
   store.deals.unshift(deal);
@@ -1479,12 +1596,18 @@ function detailView(d) {
         ${personBehind(d) ? `<a class="btn ghost small" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(personBehind(d))}" target="_blank" rel="noopener">👤 TruePeopleSearch ↗</a>` : ""}
       </span>
     </div>
+    ${d.principal ? `<p class="principal-line">★ Likely principal (from records): <b>${esc(personDisplay(d.principal))}</b></p>` : ""}
     <div class="deal-body">
       <label class="field"><span>Owner</span><input data-field="owner" value="${esc(d.owner)}" placeholder="Owner or LLC name"></label>
       <label class="field"><span>Owner mailing address</span><input data-field="ownerAddress" value="${esc(d.ownerAddress)}" placeholder="From the deed/mortgage"></label>
       <label class="field"><span>Phone</span><input data-field="phone" value="${esc(d.phone || "")}" placeholder="(___) ___-____"></label>
       <label class="field"><span>Email</span><input data-field="email" value="${esc(d.email || "")}" placeholder="name@example.com"></label>
     </div>
+  </div>
+
+  <div class="card">
+    <h2 class="card-title">People named in the records <span class="find-tag">ACRIS</span></h2>
+    <div class="people-list">${peopleHtml(d)}</div>
   </div>
 
   ${(d.entity || looksLikeEntity(d.owner)) ? `<div class="card">
@@ -1620,6 +1743,22 @@ detailEl.addEventListener("click", async (e) => {
     save();
     renderPipeline();
     toast(`${field === "email" ? "Email" : "Phone"} filled in`);
+    return;
+  }
+  if (e.target.closest(".person-use")) {
+    const name = e.target.closest(".person-use").dataset.person;
+    if (d.principal && personKey(personDisplay(d.principal)) === personKey(personDisplay(name))) {
+      delete d.principal;
+      (d.activity ||= []).push({ date: today(), text: `Cleared likely principal` });
+      toast("Principal cleared");
+    } else {
+      d.principal = name;
+      (d.activity ||= []).push({ date: today(), text: `Marked ${name} as likely principal (from ACRIS records)` });
+      toast(`${name} set as likely principal`);
+    }
+    delete d.sample;
+    save();
+    renderPipeline();
     return;
   }
   if (e.target.closest("#find-news")) {
@@ -1866,6 +2005,7 @@ $("#set-csv").addEventListener("click", () => {
     ["Address", (d) => d.address], ["Borough", (d) => d.borough],
     ["Block", (d) => d.block], ["Lot", (d) => d.lot],
     ["Neighborhood", (d) => hoodOf(d)], ["Owner", (d) => d.owner],
+    ["Likely principal", (d) => (d.principal ? personDisplay(d.principal) : "")],
     ["Owner mailing address", (d) => d.ownerAddress], ["Phone", (d) => d.phone],
     ["Email", (d) => d.email], ["Stage", (d) => d.stage],
     ["Seller score", (d) => d.score?.value || ""], ["Property type", (d) => typeOfDeal(d)],
