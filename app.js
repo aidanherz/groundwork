@@ -1637,10 +1637,65 @@ function renderTavilyStatus() {
     : `<span class="tavily-off">○ Not connected</span> <span class="ent-dim">contact lookup is off until you add a key</span>`;
 }
 
+async function fetchTavilyUsage() {
+  const key = getTavilyKey();
+  if (!key) return { status: "nokey" };
+  try {
+    const res = await fetch("https://api.tavily.com/usage", {
+      headers: { "Authorization": `Bearer ${key}` },
+    });
+    if (res.status === 401) return { status: "badkey" };
+    if (!res.ok) return { status: "error", message: `Tavily replied ${res.status}` };
+    const data = await res.json();
+    return { status: "ok", account: data.account || {}, key: data.key || {} };
+  } catch (e) {
+    return { status: "error", message: e.message };
+  }
+}
+
+function renderTavilyUsage(u) {
+  const el = $("#tavily-usage");
+  if (!el) return;
+  if (!u) { el.innerHTML = `<p class="empty-note">Hit “Check usage” to see how many credits you have left this month.</p>`; return; }
+  if (u.status === "nokey") { el.innerHTML = `<p class="empty-note">Add a key above first.</p>`; return; }
+  if (u.status === "badkey") { el.innerHTML = `<p class="ent-miss">Key rejected — double-check it above.</p>`; return; }
+  if (u.status === "error") { el.innerHTML = `<p class="ent-miss">Couldn't reach Tavily (${esc(u.message || "network error")}). Try again.</p>`; return; }
+
+  const used = Number(u.account.plan_usage ?? u.key.usage ?? 0);
+  const limit = u.account.plan_limit ?? u.key.limit;
+  const plan = u.account.current_plan || "";
+  const pg = Number(u.account.paygo_usage ?? 0);
+
+  if (limit == null) {
+    el.innerHTML = `<div class="usage-num"><b>${used.toLocaleString()}</b> credits used this month</div>
+      <p class="fine-print">${plan ? esc(plan) + " plan · " : ""}no monthly cap on this plan.${pg ? ` ${pg.toLocaleString()} pay-as-you-go credits used.` : ""} Checked ${fmtDate(today())}.</p>`;
+    return;
+  }
+
+  const remaining = Math.max(0, Number(limit) - used);
+  const pct = Math.min(100, Math.round((used / Number(limit)) * 100));
+  const low = remaining <= Number(limit) * 0.1;
+  el.innerHTML = `
+    <div class="usage-num"><b class="${low ? "usage-low" : ""}">${remaining.toLocaleString()}</b> of ${Number(limit).toLocaleString()} credits left</div>
+    <div class="usage-bar"><span style="width:${pct}%" class="${low ? "usage-bar-low" : ""}"></span></div>
+    <p class="fine-print">${used.toLocaleString()} used${plan ? ` · ${esc(plan)} plan` : ""}${pg ? ` · ${pg.toLocaleString()} pay-as-you-go used` : ""} · resets monthly · checked ${fmtDate(today())}. Each search costs 1–2 credits.</p>`;
+}
+
+$("#tavily-usage-refresh").addEventListener("click", async (e) => {
+  const btn = e.target;
+  if (!getTavilyKey()) { renderTavilyUsage({ status: "nokey" }); return; }
+  btn.disabled = true;
+  btn.textContent = "Checking…";
+  renderTavilyUsage(await fetchTavilyUsage());
+  btn.disabled = false;
+  btn.textContent = "↻ Check usage";
+});
+
 function renderSettings() {
   $("#set-borough").value = SETTINGS.borough;
   $("#set-followup").value = SETTINGS.followupDays;
   renderTavilyStatus();
+  renderTavilyUsage(null);
 
   const raw = localStorage.getItem(STORE_KEY) || "";
   const bytes = new Blob([raw]).size;

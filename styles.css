@@ -705,6 +705,14 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .news-snip { font-size: 0.84rem; color: var(--ink-soft); }
 
 .tavily-status { margin-bottom: 12px; font-size: 0.9rem; }
+.usage-block { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); }
+.usage-title { font-family: var(--serif); font-weight: 600; font-size: 0.98rem; }
+.usage-num { font-size: 0.95rem; margin: 4px 0 8px; }
+.usage-num b { font-family: var(--serif); font-size: 1.5rem; font-weight: 600; color: var(--moss); }
+.usage-num b.usage-low { color: var(--err); }
+.usage-bar { height: 8px; border-radius: 999px; background: var(--paper-deep); overflow: hidden; }
+.usage-bar > span { display: block; height: 100%; background: var(--moss); border-radius: 999px; }
+.usage-bar > span.usage-bar-low { background: var(--err); }
 .tavily-on { color: var(--good); font-weight: 700; }
 .tavily-off { color: var(--ink-faint); font-weight: 700; }
 .tavily-entry { display: flex; flex-wrap: wrap; gap: 8px; }
