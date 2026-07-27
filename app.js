@@ -367,6 +367,25 @@ function normEntityName(n) {
   return String(n || "").toUpperCase().replace(/[.,'’&/-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Best real-person name to search on TruePeopleSearch. Prefer an individual we've
+// traced behind the LLC — the DOS process contact, then the registered agent —
+// then the owner itself if the owner is already a person. Skips anything that
+// still looks like a company so we never waste a people search on an "LLC" name.
+function personBehind(d) {
+  const ent = d && d.entity;
+  for (const c of [ent && ent.processName, ent && ent.agentName, d && d.owner]) {
+    const name = String(c || "").trim();
+    if (name && !looksLikeEntity(name)) return name;
+  }
+  return "";
+}
+// Inline "look this person up" link, shown only next to names that read as people.
+function personLookupLink(name) {
+  const n = String(name || "").trim();
+  if (!n || looksLikeEntity(n)) return "";
+  return ` <a class="tps-inline" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(n)}" target="_blank" rel="noopener">🔎 TruePeopleSearch ↗</a>`;
+}
+
 async function traceEntity(rawName) {
   const key = normEntityName(rawName);
   if (!key) return null;
@@ -417,8 +436,8 @@ function entityHtml(ent) {
     return `<span class="ent-miss">No exact match in the state's active-business registry — the entity may be dissolved, out-of-state, or spelled differently on file. <a href="https://apps.dos.ny.gov/publicInquiry/" target="_blank" rel="noopener">Check manually ↗</a></span>`;
   }
   return `<span class="ent-line"><b>State registry:</b> ${esc(ent.entityType || "Registered entity")}${ent.filed ? ` · registered ${fmtDate(ent.filed)}` : ""}${ent.county ? ` · ${esc(ent.county)} County` : ""}${ent.jurisdiction && ent.jurisdiction !== "New York" ? ` · formed in ${esc(ent.jurisdiction)}` : ""}</span>
-    ${ent.processAddr ? `<span class="ent-line">Legal papers go to: <b>${esc(ent.processName || ent.name)}</b>, ${esc(ent.processAddr)}</span>` : ""}
-    ${ent.agentName ? `<span class="ent-line">Registered agent: <b>${esc(ent.agentName)}</b>${ent.agentAddr ? `, ${esc(ent.agentAddr)}` : ""}</span>` : ""}
+    ${ent.processAddr ? `<span class="ent-line">Legal papers go to: <b>${esc(ent.processName || ent.name)}</b>, ${esc(ent.processAddr)}${personLookupLink(ent.processName || ent.name)}</span>` : ""}
+    ${ent.agentName ? `<span class="ent-line">Registered agent: <b>${esc(ent.agentName)}</b>${ent.agentAddr ? `, ${esc(ent.agentAddr)}` : ""}${personLookupLink(ent.agentName)}</span>` : ""}
     ${ent.dosId ? `<span class="ent-line ent-dim">DOS ID ${esc(ent.dosId)} · <a href="https://apps.dos.ny.gov/publicInquiry/" target="_blank" rel="noopener">full state record ↗</a></span>` : ""}`;
 }
 
@@ -1440,8 +1459,8 @@ function detailView(d) {
       <span class="owner-actions">
         ${d.phone ? `<a class="btn primary small" href="tel:${esc(d.phone.replace(/[^\d+]/g, ""))}">📞 Call</a>` : ""}
         ${d.email ? `<a class="btn primary small" href="mailto:${esc(d.email.trim())}">✉ Email</a>` : ""}
-        ${d.owner ? `<a class="btn ghost small" href="https://opencorporates.com/companies?q=${encodeURIComponent(d.owner)}&jurisdiction_code=us_ny" target="_blank" rel="noopener">🏛 OpenCorporates ↗</a>` : ""}
-        ${d.owner ? `<a class="btn ghost small" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(d.owner)}" target="_blank" rel="noopener">👤 TruePeopleSearch ↗</a>` : ""}
+        ${looksLikeEntity(d.owner) ? `<a class="btn ghost small" href="https://opencorporates.com/companies?q=${encodeURIComponent(d.owner)}&jurisdiction_code=us_ny" target="_blank" rel="noopener">🏛 OpenCorporates ↗</a>` : ""}
+        ${personBehind(d) ? `<a class="btn ghost small" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(personBehind(d))}" target="_blank" rel="noopener">👤 TruePeopleSearch ↗</a>` : ""}
       </span>
     </div>
     <div class="deal-body">

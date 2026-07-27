@@ -301,6 +301,8 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .ent-dim { color: var(--ink-faint); font-size: 0.78rem; }
 .ent-miss { color: var(--ink-faint); font-style: italic; }
 .ent-miss a, .ent-dim a { color: var(--moss); font-weight: 600; }
+.tps-inline { color: var(--moss); font-weight: 600; font-size: 0.78rem; white-space: nowrap; text-decoration: none; }
+.tps-inline:hover { text-decoration: underline; }
 
 .doc-list { margin-top: 14px; border-top: 1px solid var(--line); }
 .doc {
