@@ -367,23 +367,39 @@ function normEntityName(n) {
   return String(n || "").toUpperCase().replace(/[.,'’&/-]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+// Business-ish words that don't appear as legal suffixes but still mark a name as
+// a company rather than a person (registered-agent services, management cos, etc.).
+const BIZ_WORDS = /\b(MANAGE|MANAGEMENT|MGMT|CAPITAL|ENTERPRISES?|COMPANY|CO|BANK|AGENTS?|AGENCY|SERVICES?|SOLUTIONS?|SYSTEMS?|NATIONAL|REGISTERED|DEVELOPMENT|CONSTRUCTION|BUILDERS?|CONTRACTING|FUND|TRUSTEE|ESTATES?|RESIDENCES?|APARTMENTS?|CONDOMINIUM|HOUSING|CITY|STATE|DEPARTMENT|BUREAU|AUTHORITY|CHURCH|TEMPLE|SYNAGOGUE|INTERNATIONAL|GLOBAL|USA|AMERICA|FAMILY|LIVING|FOUNDATION)\b/i;
+
+// Does this name actually read like an individual person we could look up? A
+// positive test (not just "isn't obviously a company") — a real name is 2–4
+// plain word/initial tokens, no digits, no company suffixes or business words.
+function looksLikePerson(name) {
+  const n = String(name || "").trim();
+  if (!n) return false;
+  if (/[0-9]/.test(n)) return false;      // addresses / numbered entities
+  if (looksLikeEntity(n)) return false;   // LLC / Corp / L.P. / Trust / …
+  if (BIZ_WORDS.test(n)) return false;    // Management / Capital / Registered Agents / …
+  const words = n.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 4) return false;
+  return words.every((w) => /^[A-Za-z][A-Za-z.'’-]*$/.test(w));
+}
+
 // Best real-person name to search on TruePeopleSearch. Prefer an individual we've
 // traced behind the LLC — the DOS process contact, then the registered agent —
-// then the owner itself if the owner is already a person. Skips anything that
-// still looks like a company so we never waste a people search on an "LLC" name.
+// then the owner itself if the owner is already a person. Only returns a name
+// that genuinely reads as a person, so we never search a company on a people site.
 function personBehind(d) {
   const ent = d && d.entity;
   for (const c of [ent && ent.processName, ent && ent.agentName, d && d.owner]) {
-    const name = String(c || "").trim();
-    if (name && !looksLikeEntity(name)) return name;
+    if (looksLikePerson(c)) return String(c).trim();
   }
   return "";
 }
 // Inline "look this person up" link, shown only next to names that read as people.
 function personLookupLink(name) {
-  const n = String(name || "").trim();
-  if (!n || looksLikeEntity(n)) return "";
-  return ` <a class="tps-inline" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(n)}" target="_blank" rel="noopener">🔎 TruePeopleSearch ↗</a>`;
+  if (!looksLikePerson(name)) return "";
+  return ` <a class="tps-inline" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(String(name).trim())}" target="_blank" rel="noopener">🔎 TruePeopleSearch ↗</a>`;
 }
 
 async function traceEntity(rawName) {
