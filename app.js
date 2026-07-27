@@ -1440,6 +1440,8 @@ function detailView(d) {
       <span class="owner-actions">
         ${d.phone ? `<a class="btn primary small" href="tel:${esc(d.phone.replace(/[^\d+]/g, ""))}">📞 Call</a>` : ""}
         ${d.email ? `<a class="btn primary small" href="mailto:${esc(d.email.trim())}">✉ Email</a>` : ""}
+        ${d.owner ? `<a class="btn ghost small" href="https://opencorporates.com/companies?q=${encodeURIComponent(d.owner)}&jurisdiction_code=us_ny" target="_blank" rel="noopener">🏛 OpenCorporates ↗</a>` : ""}
+        ${d.owner ? `<a class="btn ghost small" href="https://www.truepeoplesearch.com/results?name=${encodeURIComponent(d.owner)}" target="_blank" rel="noopener">👤 TruePeopleSearch ↗</a>` : ""}
       </span>
     </div>
     <div class="deal-body">
