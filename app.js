@@ -510,6 +510,100 @@ function findingsHtml(f) {
     <p class="fine-print">Searched: <span class="ent-dim">${esc(f.query)}</span> · ${f.fetchedAt ? fmtDate(f.fetchedAt) : ""}</p>`;
 }
 
+/* ---------- Tavily property news ---------- */
+async function runNewsLookup(d) {
+  const key = getTavilyKey();
+  if (!key) return { status: "nokey" };
+  const address = d.address || "";
+  const boro = d.borough || "";
+  if (!address) return { status: "none" };
+
+  // Bias toward the exact building: lead with the quoted address, skip owner/neighborhood terms.
+  const query = `"${address}" ${boro} New York City — news about this specific building: sale, development, construction, violations, lawsuit, foreclosure, fire, permits, rezoning`;
+
+  // Pieces used to score how strongly a result names THIS address.
+  const num = (address.match(/^\s*(\d+[\w-]*)/) || [])[1] || "";
+  const streetTokens = address
+    .replace(/^\s*\d+[\w-]*/, "")
+    .toLowerCase()
+    .replace(/\b(st|street|ave|avenue|rd|road|blvd|boulevard|pl|place|dr|drive|ct|court|ln|lane|pkwy|parkway|hwy|highway|ter|terrace)\b\.?/g, "")
+    .split(/[\s.,]+/).filter((t) => t.length > 2);
+
+  const scoreItem = (r) => {
+    const hay = `${r.title || ""} ${r.content || ""}`.toLowerCase();
+    const hasNum = num && new RegExp(`\\b${num.toLowerCase().replace(/[-]/g, "\\-")}\\b`).test(hay);
+    const tokenHits = streetTokens.filter((t) => hay.includes(t)).length;
+    if (hasNum && tokenHits) return 3;   // names the building (number + street)
+    if (hasNum) return 2;                 // has the number
+    if (tokenHits) return 1;              // same street / area
+    return 0;                             // broader area news
+  };
+
+  try {
+    const res = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({
+        query,
+        topic: "news",
+        time_range: "year",
+        search_depth: "advanced",
+        include_answer: "advanced",
+        max_results: 12,
+      }),
+    });
+    if (res.status === 401) return { status: "badkey" };
+    if (!res.ok) return { status: "error", message: `Tavily replied ${res.status}` };
+    const data = await res.json();
+    const results = Array.isArray(data.results) ? data.results : [];
+
+    // Rank building matches to the top, then cut to 8.
+    const ranked = results
+      .map((r, i) => ({ r, sc: scoreItem(r), i }))
+      .sort((a, b) => b.sc - a.sc || a.i - b.i)
+      .slice(0, 8);
+
+    return {
+      status: "found",
+      answer: data.answer || "",
+      items: ranked.map(({ r, sc }) => ({
+        title: r.title || r.url,
+        url: r.url,
+        date: r.published_date || "",
+        source: (() => { try { return new URL(r.url).hostname.replace(/^www\./, ""); } catch (e) { return ""; } })(),
+        snippet: (r.content || "").slice(0, 240),
+        onAddress: sc >= 3,
+      })),
+      query,
+      fetchedAt: today(),
+    };
+  } catch (e) {
+    return { status: "error", message: e.message };
+  }
+}
+
+function newsHtml(f) {
+  if (!f) return "";
+  if (f.status === "nokey") return `<p class="empty-note">Add your Tavily API key in <b>Settings</b> to pull recent news about this property.</p>`;
+  if (f.status === "badkey") return `<p class="ent-miss">That Tavily key was rejected — check it in Settings.</p>`;
+  if (f.status === "error") return `<p class="ent-miss">News lookup didn't go through (${esc(f.message || "network error")}). Try again.</p>`;
+  if (f.status === "none") return `<p class="empty-note">Nothing to search — no address on file yet.</p>`;
+  if (!f.items || !f.items.length) return `<p class="empty-note">No recent news found for this property in the past year.</p>`;
+
+  const onAddr = f.items.filter((n) => n.onAddress).length;
+  return `
+    <p class="find-warn">⚠︎ From public web news, ranked to favor this exact building${onAddr ? "" : " (none clearly named it this time — results below are block/area coverage)"}. Verify before relying on it.</p>
+    ${f.answer ? `<div class="find-answer"><b>Summary:</b> ${esc(f.answer)}</div>` : ""}
+    <div class="news-list">
+      ${f.items.map((n) => `<div class="news-item">
+        <a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)} ↗</a>
+        <div class="news-meta">${n.onAddress ? `<span class="news-badge">this building</span>` : ""}${[n.source, n.date ? fmtDate(n.date) : ""].filter(Boolean).map(esc).join(" · ")}</div>
+        <div class="news-snip">${esc(n.snippet)}…</div>
+      </div>`).join("")}
+    </div>
+    <p class="fine-print">Searched news from the past year, ranked by how closely each names this address · ${f.fetchedAt ? fmtDate(f.fetchedAt) : ""}</p>`;
+}
+
 /* ---------- ACRIS research tab ---------- */
 const RESULT_CACHE = new Map();
 
@@ -1264,6 +1358,9 @@ function factRow(label, value) {
 function detailView(d) {
   const f = d.facts || {};
   const s = d.score;
+  const gnewsUrl = d.address
+    ? `https://news.google.com/search?q=${encodeURIComponent(`"${d.address}" ${[hoodOf(d), d.borough].filter(Boolean).join(" ")} New York`)}`
+    : "";
   const scoreHtml = s
     ? `<div class="score-line">
          <span class="score-big">${s.value}<em>/5</em></span>
@@ -1345,6 +1442,17 @@ function detailView(d) {
       <div class="findings">${d.contacts ? findingsHtml(d.contacts) : `<p class="empty-note">Searches the public web (via Tavily) for the people and contact details behind this owner. On-demand — nothing runs until you click.</p>`}</div>
     </div>
   </div>` : ""}
+
+  <div class="card">
+    <div class="facts-head">
+      <h2 class="card-title">Recent news <span class="find-tag">web search</span></h2>
+      <span class="news-actions">
+        <button class="btn ghost small" id="find-news">📰 Find recent news</button>
+        ${gnewsUrl ? `<a class="btn ghost small" href="${gnewsUrl}" target="_blank" rel="noopener">🔗 Google News ↗</a>` : ""}
+      </span>
+    </div>
+    <div class="news-findings">${d.news ? newsHtml(d.news) : `<p class="empty-note">Searches the public web (via Tavily) for recent news about this property — sales, development, violations, and more. On-demand — nothing runs until you click.</p>`}</div>
+  </div>
 
   <div class="card">
     <h2 class="card-title">Plan</h2>
@@ -1436,6 +1544,23 @@ detailEl.addEventListener("click", async (e) => {
     save();
     renderPipeline();
     toast(`${field === "email" ? "Email" : "Phone"} filled in`);
+    return;
+  }
+  if (e.target.closest("#find-news")) {
+    const btn = e.target.closest("#find-news");
+    if (!getTavilyKey()) {
+      $(".news-findings", detailEl).innerHTML = newsHtml({ status: "nokey" });
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = "Searching news…";
+    const news = await runNewsLookup(d);
+    d.news = news;
+    (d.activity ||= []).push({ date: today(), text: "Ran web news search" });
+    delete d.sample;
+    save();
+    renderPipeline();
+    if (news.status === "found") toast("News search done");
     return;
   }
   if (e.target.closest(".log-add")) {
