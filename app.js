@@ -1015,6 +1015,7 @@ const TYPE_OF_CLASS = {
 };
 const TYPE_LIST = ["Multifamily", "Mixed-use", "Office", "Retail", "Industrial / Warehouse", "Hotel", "1–2 Family", "Condo unit", "Vacant land", "Other"];
 function typeOfDeal(d) {
+  if (d.typeOverride) return d.typeOverride;
   const c = d.facts?.bldgClass;
   if (!c) return "";
   return TYPE_OF_CLASS[c[0]] || "Other";
@@ -1412,7 +1413,13 @@ function detailView(d) {
         <button class="btn ghost small" id="refresh-data">↻ Refresh city data</button>
       </div>
       <div class="facts-grid">
-        ${factRow("Property type", esc(f.propertyType))}
+        <div class="fact fact-type">
+          <span>Property type ${d.typeOverride ? `<em class="fact-edited">edited</em>` : ""}</span>
+          <select data-typeoverride>
+            <option value="">${f.propertyType ? `Auto — city says ${esc(f.propertyType)}` : "Auto — from city record"}</option>
+            ${TYPE_LIST.map((t) => `<option ${d.typeOverride === t ? "selected" : ""}>${esc(t)}</option>`).join("")}
+          </select>
+        </div>
         ${factRow("Building class", esc(f.bldgClass))}
         ${factRow("Zoning", esc(f.zoning))}
         ${factRow("Tax class", esc(f.taxClass))}
@@ -1506,6 +1513,24 @@ $("#pipeline-list").addEventListener("click", (e) => {
 const detailEl = $("#pipeline-detail");
 detailEl.addEventListener("change", onDealEdit);
 detailEl.addEventListener("focusout", onDealEdit);
+detailEl.addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-typeoverride]");
+  if (!sel) return;
+  const d = store.deals.find((x) => x.id === detailEl.dataset.id);
+  if (!d) return;
+  if (sel.value) {
+    d.typeOverride = sel.value;
+    (d.activity ||= []).push({ date: today(), text: `Set property type to “${sel.value}” by hand` });
+    toast("Property type set — it won't be overwritten by refresh");
+  } else {
+    delete d.typeOverride;
+    (d.activity ||= []).push({ date: today(), text: "Reset property type to the city record" });
+    toast("Back to the city's classification");
+  }
+  delete d.sample;
+  save();
+  renderPipeline();
+});
 detailEl.addEventListener("click", async (e) => {
   const d = store.deals.find((x) => x.id === detailEl.dataset.id);
 

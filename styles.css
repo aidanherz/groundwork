@@ -650,6 +650,30 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
   color: var(--ink-faint);
 }
 .fact b { font-size: 0.92rem; font-weight: 600; }
+.fact-type select {
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1b2b20;
+  background: #f7f3e3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-top: 2px;
+  max-width: 100%;
+}
+.fact-edited {
+  font-style: normal;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #16291f;
+  background: var(--moss);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
 
 .log-list { margin-top: 10px; font-size: 0.85rem; }
 .log-list .row-item { padding: 6px 0; }
