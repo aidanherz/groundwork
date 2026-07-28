@@ -20,6 +20,45 @@ const BORO_PLUTO = { Manhattan: "MN", Bronx: "BX", Brooklyn: "BK", Queens: "QN",
 
 const STAGES = ["New lead", "Researching", "Outreach sent", "In contact", "Negotiating", "Under contract", "Dead"];
 
+/* ---------- demo mode (the portfolio "Visit Groundwork" link uses ?demo=1) ----------
+   When on, the Tavily-powered web lookups return clearly-labelled SAMPLE data and
+   never call the API — so anyone visiting the public demo (including me, clicking
+   from the portfolio) can't spend real Tavily credits. Everything else — ACRIS
+   search, city data, LLC tracing, OpenCorporates/TruePeopleSearch — works for real. */
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+function demoContacts(entityName) {
+  const clean = String(entityName || "").trim();
+  if (!clean) return { status: "none" };
+  return {
+    status: "found", demo: true,
+    answer: `Sample result — in the live tool this summarizes who is behind “${clean}”, pulled from public web sources.`,
+    emails: ["principal@example-realty.com", "office@example-mgmt.com"],
+    phones: ["(212) 555-0142", "(917) 555-0188"],
+    sources: [
+      { title: "Example Realty — Our team", url: "https://example.com/team", snippet: "Sample source. In the full app, connecting a Tavily key pulls the real people and contact details behind an owning entity" },
+      { title: "NYC real estate news — ownership profile", url: "https://example.com/news", snippet: "Sample source. Live search scans the public web for principals, managers, and registered agents tied to the LLC" },
+    ],
+    query: `"${clean}" — demo (no live search ran)`,
+    fetchedAt: today(),
+  };
+}
+
+function demoNews(d) {
+  if (!d.address) return { status: "none" };
+  const addr = d.address;
+  return {
+    status: "found", demo: true,
+    answer: `Sample result — in the live tool this summarizes recent news about ${addr}.`,
+    items: [
+      { title: `Sample: ownership and financing activity at ${addr}`, url: "https://example.com/story-1", date: today(), source: "example.com", snippet: "Sample headline. With a Tavily key, the full app pulls real, recent news ranked to favor this exact building", onAddress: true },
+      { title: `Sample: neighborhood development and new permits`, url: "https://example.com/story-2", date: today(), source: "example.com", snippet: "Sample headline. Live results include sales, construction, violations, and lawsuits from the past year", onAddress: false },
+    ],
+    query: `"${addr}" — demo (no live search ran)`,
+    fetchedAt: today(),
+  };
+}
+
 const DOC_TYPES = {
   DEED: ["Deed — property sold/transferred", true],
   DEEDO: ["Deed (other)", true],
@@ -607,6 +646,7 @@ function extractPhones(text) {
 }
 
 async function runContactLookup(entityName, context = "") {
+  if (DEMO) return demoContacts(entityName);
   const key = getTavilyKey();
   if (!key) return { status: "nokey" };
   const clean = String(entityName || "").trim();
@@ -666,7 +706,9 @@ function findingsHtml(f) {
   if (nothing) return `<p class="empty-note">The web search came back empty for this entity. It may be privately held or thinly documented online.</p>`;
 
   return `
-    <p class="find-warn">⚠︎ Unverified — pulled from public web results. Confirm before relying on it.</p>
+    ${f.demo
+      ? `<p class="demo-note">🔎 Demo — sample data, no live search ran. The full app searches the public web via Tavily.</p>`
+      : `<p class="find-warn">⚠︎ Unverified — pulled from public web results. Confirm before relying on it.</p>`}
     ${chipRow("Emails found", f.emails, "email")}
     ${chipRow("Phones found", f.phones, "phone")}
     ${f.answer ? `<div class="find-answer"><b>Summary:</b> ${esc(f.answer)}</div>` : ""}
@@ -677,6 +719,7 @@ function findingsHtml(f) {
 
 /* ---------- Tavily property news ---------- */
 async function runNewsLookup(d) {
+  if (DEMO) return demoNews(d);
   const key = getTavilyKey();
   if (!key) return { status: "nokey" };
   const address = d.address || "";
@@ -757,7 +800,9 @@ function newsHtml(f) {
 
   const onAddr = f.items.filter((n) => n.onAddress).length;
   return `
-    <p class="find-warn">⚠︎ From public web news, ranked to favor this exact building${onAddr ? "" : " (none clearly named it this time — results below are block/area coverage)"}. Verify before relying on it.</p>
+    ${f.demo
+      ? `<p class="demo-note">📰 Demo — sample data, no live search ran. The full app pulls real news via Tavily.</p>`
+      : `<p class="find-warn">⚠︎ From public web news, ranked to favor this exact building${onAddr ? "" : " (none clearly named it this time — results below are block/area coverage)"}. Verify before relying on it.</p>`}
     ${f.answer ? `<div class="find-answer"><b>Summary:</b> ${esc(f.answer)}</div>` : ""}
     <div class="news-list">
       ${f.items.map((n) => `<div class="news-item">
@@ -1718,7 +1763,7 @@ detailEl.addEventListener("click", async (e) => {
   }
   if (e.target.closest("#find-contacts")) {
     const btn = e.target.closest("#find-contacts");
-    if (!getTavilyKey()) {
+    if (!DEMO && !getTavilyKey()) {
       $(".findings", detailEl).innerHTML = findingsHtml({ status: "nokey" });
       return;
     }
@@ -1763,7 +1808,7 @@ detailEl.addEventListener("click", async (e) => {
   }
   if (e.target.closest("#find-news")) {
     const btn = e.target.closest("#find-news");
-    if (!getTavilyKey()) {
+    if (!DEMO && !getTavilyKey()) {
       $(".news-findings", detailEl).innerHTML = newsHtml({ status: "nokey" });
       return;
     }
@@ -2060,3 +2105,12 @@ function renderAll() {
 }
 renderSettings();
 renderAll();
+
+/* ---------- demo banner ---------- */
+if (DEMO) {
+  document.body.classList.add("demo-mode");
+  const banner = document.createElement("div");
+  banner.className = "demo-banner";
+  banner.innerHTML = `<b>Demo</b> — explore freely. Web-search features show sample data, so no live API is called.`;
+  document.body.appendChild(banner);
+}

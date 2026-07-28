@@ -304,6 +304,33 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 .tps-inline { color: var(--moss); font-weight: 600; font-size: 0.78rem; white-space: nowrap; text-decoration: none; }
 .tps-inline:hover { text-decoration: underline; }
 
+/* demo mode */
+.demo-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 300;
+  max-width: min(92vw, 640px);
+  padding: 9px 16px;
+  background: var(--moss);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+.demo-banner b { font-weight: 700; }
+.demo-note {
+  color: var(--moss);
+  font-weight: 600;
+  font-size: 0.82rem;
+  background: color-mix(in srgb, var(--moss) 13%, transparent);
+  border-radius: 8px;
+  padding: 8px 11px;
+  margin: 0 0 10px;
+}
+
 .doc-list { margin-top: 14px; border-top: 1px solid var(--line); }
 .doc {
   padding: 12px 0;
