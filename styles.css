@@ -273,6 +273,37 @@ a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 5
 #search-status { margin: 14px 0; font-size: 0.92rem; color: var(--ink-soft); }
 #search-status .err { color: var(--err); }
 
+/* address-candidate picker */
+.cand-card { margin-bottom: 18px; }
+.cand-head { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin-bottom: 10px; }
+.cand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: var(--paper-deep);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 11px 14px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: var(--sans);
+  color: var(--ink);
+}
+.cand-row:hover { border-color: var(--good); }
+.cand-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cand-main b { font-family: var(--serif); font-size: 1rem; font-weight: 600; }
+.cand-bbl { font-size: 0.76rem; color: var(--ink-faint); margin-top: 1px; }
+.cand-chev { color: var(--ink-faint); font-size: 1.2rem; flex: none; }
+
+.acris-filed {
+  font-size: 0.8rem;
+  color: var(--warn);
+  margin-top: 6px;
+}
+.acris-filed b { color: var(--ink); }
+
 /* property result card */
 .prop-card { border-left: 3px solid var(--moss); }
 .prop-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }

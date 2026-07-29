@@ -816,6 +816,92 @@ function newsHtml(f) {
 
 /* ---------- ACRIS research tab ---------- */
 const RESULT_CACHE = new Map();
+const GEOSEARCH = "https://geosearch.planninglabs.nyc/v2/search";
+
+// 10-digit BBL -> { boro, block, lot }
+function parseBBL(bbl) {
+  const s = String(bbl || "").padStart(10, "0");
+  return { boro: s[0], block: String(Number(s.slice(1, 6))), lot: String(Number(s.slice(6))) };
+}
+
+// Geocode a typed address into ranked candidate lots (handles W/West, 88/88th,
+// vanity numbers, and corner buildings filed under a different address).
+async function geocodeAddress(text, boroughName) {
+  const q = boroughName ? `${text}, ${boroughName}` : text;
+  const url = `${GEOSEARCH}?text=${encodeURIComponent(q)}&size=10`;
+  // The geocoder occasionally returns a transient 400 under load — retry a couple times.
+  let res;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch(url);
+    if (res.ok) break;
+    await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+  }
+  if (!res.ok) throw new Error(`address lookup replied ${res.status}`);
+  const data = await res.json();
+  const seen = new Set();
+  const out = [];
+  for (const f of (data.features || [])) {
+    const p = f.properties || {};
+    const bbl = p.addendum?.pad?.bbl || p.pad_bbl;
+    if (!bbl || bbl === "0000000000") continue;
+    if (boroughName && p.borough && p.borough !== boroughName) continue;
+    if (seen.has(bbl)) continue;         // one row per lot
+    seen.add(bbl);
+    out.push({ label: p.name || p.label || "", borough: p.borough || "", ...parseBBL(bbl) });
+  }
+  return out;
+}
+
+function renderCandidates(cands, status, results) {
+  status.textContent = `Found ${cands.length} possible match${cands.length === 1 ? "" : "es"} — pick the right building:`;
+  results.innerHTML = `<div class="card cand-card">
+    <div class="cand-head">Which building did you mean?</div>
+    ${cands.map((c) => `<button class="cand-row" data-boro="${esc(c.boro)}" data-block="${esc(c.block)}" data-lot="${esc(c.lot)}" data-addr="${esc(titleCase(c.label))}">
+      <span class="cand-main">
+        <b>${esc(titleCase(c.label))}</b>
+        <span class="cand-bbl">${esc(c.borough)} · Block ${esc(c.block)} · Lot ${esc(c.lot)}</span>
+      </span>
+      <span class="cand-chev">›</span>
+    </button>`).join("")}
+    <p class="fine-print" style="margin-top:10px">Matched via NYC's address geocoder. The exact deed/mortgage records load when you pick one.</p>
+  </div>`;
+}
+
+// Fetch masters + parties for a set of ACRIS legals and render property cards.
+async function loadAndRenderProperties(legals, { status, results, preferredAddr } = {}) {
+  if (!legals.length) {
+    status.innerHTML = `<span class="err">That lot has no recorded documents in ACRIS.</span>`;
+    return;
+  }
+  const props = new Map();
+  for (const l of legals) {
+    const key = `${l.borough}-${l.block}-${l.lot}`;
+    if (!props.has(key)) props.set(key, { borough: l.borough, block: l.block, lot: l.lot, preferred: preferredAddr || "", addresses: new Set(), docIds: new Set() });
+    const p = props.get(key);
+    if (l.street_number && l.street_name) p.addresses.add(`${l.street_number} ${titleCase(l.street_name)}`);
+    p.docIds.add(l.document_id);
+  }
+  const allIds = [...new Set(legals.map((l) => l.document_id))].slice(0, 200);
+  status.textContent = `Found ${props.size} propert${props.size === 1 ? "y" : "ies"} — pulling deeds, mortgages, and names…`;
+  const [masters, parties] = await Promise.all([
+    fetchByDocIds(ACRIS.master, allIds),
+    fetchByDocIds(ACRIS.parties, allIds),
+  ]);
+  const masterById = new Map(masters.map((m) => [m.document_id, m]));
+  const partiesById = new Map();
+  for (const p of parties) {
+    if (!partiesById.has(p.document_id)) partiesById.set(p.document_id, []);
+    partiesById.get(p.document_id).push(p);
+  }
+  results.innerHTML = [...props.values()].slice(0, 12).map((p) => renderPropCard(p, masterById, partiesById)).join("");
+  status.textContent = `Showing ${Math.min(props.size, 12)} of ${props.size} propert${props.size === 1 ? "y" : "ies"}.`;
+  fillEntityTraces(results);
+}
+
+async function acrisLegalsByBBL(boro, block, lot) {
+  const where = `borough='${boro}' AND block='${Number(block)}' AND lot='${Number(lot)}'`;
+  return fetchJSON(`${ACRIS.legals}?$where=${encodeURIComponent(where)}&$limit=400`);
+}
 
 let currentMode = "address";
 $("#search-mode").addEventListener("click", (e) => {
@@ -834,60 +920,30 @@ $("#search-form").addEventListener("submit", async (e) => {
   const results = $("#search-results");
   const btn = $("#search-btn");
 
-  let where;
-  if (currentMode === "address") {
-    const num = $("#f-number").value.trim();
-    const street = $("#f-street").value.trim().toUpperCase()
-      .replace(/\bAVE(NUE)?\b/g, "AVENUE").replace(/\bST(REET)?\.?$/g, "STREET")
-      .replace(/\bRD\b/g, "ROAD").replace(/\bBLVD\b/g, "BOULEVARD");
-    if (!street) { toast("Enter a street name"); return; }
-    where = `upper(street_name) like '${street.replace(/'/g, "''")}%'`;
-    if (num) where += ` AND street_number='${num.replace(/'/g, "''")}'`;
-  } else {
-    const block = $("#f-block").value.trim(), lot = $("#f-lot").value.trim();
-    if (!block || !lot) { toast("Enter both block and lot"); return; }
-    where = `block='${Number(block)}' AND lot='${Number(lot)}'`;
-  }
-  if (borough) where += ` AND borough='${borough}'`;
-
   btn.disabled = true;
-  status.textContent = "Searching NYC land records…";
   results.innerHTML = "";
 
   try {
-    const legals = await fetchJSON(`${ACRIS.legals}?$where=${encodeURIComponent(where)}&$limit=400`);
-    if (!legals.length) {
-      status.innerHTML = `<span class="err">No records found. Try just the street name (e.g. “BEDFORD”) without “Avenue/Street”, or search by block &amp; lot.</span>`;
+    if (currentMode === "address") {
+      const num = $("#f-number").value.trim();
+      const street = $("#f-street").value.trim();
+      if (!street) { toast("Enter a street name"); btn.disabled = false; return; }
+      status.textContent = "Looking up the address…";
+      const cands = await geocodeAddress(`${num} ${street}`.trim(), borough ? BOROUGHS[borough] : "");
+      if (!cands.length) {
+        status.innerHTML = `<span class="err">Couldn't find that address. Check the spelling, pick the right borough, or use “By block &amp; lot”.</span>`;
+        return;
+      }
+      renderCandidates(cands, status, results);
       return;
     }
-
-    const props = new Map();
-    for (const l of legals) {
-      const key = `${l.borough}-${l.block}-${l.lot}`;
-      if (!props.has(key)) props.set(key, { borough: l.borough, block: l.block, lot: l.lot, addresses: new Set(), docIds: new Set() });
-      const p = props.get(key);
-      if (l.street_number && l.street_name) p.addresses.add(`${l.street_number} ${titleCase(l.street_name)}`);
-      p.docIds.add(l.document_id);
-    }
-
-    const allIds = [...new Set(legals.map((l) => l.document_id))].slice(0, 200);
-    status.textContent = `Found ${props.size} propert${props.size === 1 ? "y" : "ies"} — pulling deeds, mortgages, and names…`;
-
-    const [masters, parties] = await Promise.all([
-      fetchByDocIds(ACRIS.master, allIds),
-      fetchByDocIds(ACRIS.parties, allIds),
-    ]);
-    const masterById = new Map(masters.map((m) => [m.document_id, m]));
-    const partiesById = new Map();
-    for (const p of parties) {
-      if (!partiesById.has(p.document_id)) partiesById.set(p.document_id, []);
-      partiesById.get(p.document_id).push(p);
-    }
-
-    results.innerHTML = [...props.values()].slice(0, 12)
-      .map((p) => renderPropCard(p, masterById, partiesById)).join("");
-    status.textContent = `Showing ${Math.min(props.size, 12)} of ${props.size} propert${props.size === 1 ? "y" : "ies"}.`;
-    fillEntityTraces(results);
+    // By block & lot — exact
+    const block = $("#f-block").value.trim(), lot = $("#f-lot").value.trim();
+    if (!block || !lot) { toast("Enter both block and lot"); return; }
+    if (!borough) { toast("Pick a borough for block & lot search"); return; }
+    status.textContent = "Searching NYC land records…";
+    const legals = await acrisLegalsByBBL(borough, block, lot);
+    await loadAndRenderProperties(legals, { status, results });
   } catch (err) {
     status.innerHTML = `<span class="err">Couldn't reach the NYC data service (${esc(err.message)}). Check your internet and try again.</span>`;
   } finally {
@@ -895,8 +951,34 @@ $("#search-form").addEventListener("submit", async (e) => {
   }
 });
 
+// Clicking a geocoded candidate loads that lot's ACRIS records.
+$("#search-results").addEventListener("click", async (e) => {
+  const row = e.target.closest(".cand-row");
+  if (!row) return;
+  const { boro, block, lot, addr } = row.dataset;
+  const status = $("#search-status"), results = $("#search-results");
+  status.textContent = "Pulling ACRIS records…";
+  results.innerHTML = "";
+  try {
+    const legals = await acrisLegalsByBBL(boro, block, lot);
+    await loadAndRenderProperties(legals, { status, results, preferredAddr: addr });
+  } catch (err) {
+    status.innerHTML = `<span class="err">Couldn't load that lot (${esc(err.message)}).</span>`;
+  }
+});
+
 function titleCase(s) {
   return String(s).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// Normalize an address for comparison (W↔West, St↔Street, 88th↔88, punctuation).
+function normAddr(a) {
+  return String(a || "").toUpperCase()
+    .replace(/[.,]/g, " ")
+    .replace(/\bWEST\b/g, "W").replace(/\bEAST\b/g, "E").replace(/\bNORTH\b/g, "N").replace(/\bSOUTH\b/g, "S")
+    .replace(/\bSTREET\b/g, "ST").replace(/\bAVENUE\b/g, "AVE").replace(/\bBOULEVARD\b/g, "BLVD").replace(/\bROAD\b/g, "RD")
+    .replace(/\b(\d+)(ST|ND|RD|TH)\b/g, "$1")
+    .replace(/\s+/g, " ").trim();
 }
 
 function renderPropCard(p, masterById, partiesById) {
@@ -916,9 +998,17 @@ function renderPropCard(p, masterById, partiesById) {
   const ownerParty = lastDeed ? lastDeed.pts.find((x) => x.party_type === "2" && x.address_1) : null;
   const ownerAddr = ownerParty ? [ownerParty.address_1, ownerParty.city].filter(Boolean).join(", ") : "";
 
-  const address = [...p.addresses][0] || `Block ${p.block}, Lot ${p.lot}`;
+  const acrisAddrs = [...p.addresses];
+  const address = p.preferred || acrisAddrs[0] || `Block ${p.block}, Lot ${p.lot}`;
+  // Distinct ACRIS-filed addresses that don't match what was searched.
+  const seenN = new Set();
+  const distinctAcris = [];
+  for (const a of acrisAddrs) { const n = normAddr(a); if (!seenN.has(n)) { seenN.add(n); distinctAcris.push(a); } }
+  const onFile = distinctAcris.some((a) => normAddr(a) === normAddr(address));
+  const acrisNote = (p.preferred && distinctAcris.length && !onFile) ? distinctAcris.slice(0, 2).join(" · ") : "";
+
   const payload = esc(JSON.stringify({
-    address, borough: BOROUGHS[p.borough] || p.borough, block: p.block, lot: p.lot,
+    address, acrisAddress: acrisNote, borough: BOROUGHS[p.borough] || p.borough, block: p.block, lot: p.lot,
     owner: ownerNames, ownerAddress: ownerAddr, cacheKey,
   }));
 
@@ -946,6 +1036,7 @@ function renderPropCard(p, masterById, partiesById) {
       <div>
         <div class="prop-addr">${esc(address)}</div>
         <div class="prop-bbl">${BOROUGHS[p.borough] || ""} · Block ${esc(p.block)} · Lot ${esc(p.lot)} · ${docs.length} recorded document${docs.length === 1 ? "" : "s"}</div>
+        ${acrisNote ? `<div class="acris-filed">⚑ Filed in ACRIS under a different address: <b>${esc(acrisNote)}</b></div>` : ""}
         ${ownerNames ? `<div class="owner-chip">Likely current owner: <b>${esc(ownerNames)}</b></div>` : ""}
         ${ownerNames && looksLikeEntity(ownerNames) ? `<div class="entity-trace" data-entity="${esc(ownerNames)}">Checking NY State business registry…</div>` : ""}
       </div>
@@ -1590,6 +1681,7 @@ function detailView(d) {
         <div class="deal-addr" contenteditable="true" data-field="address">${esc(d.address)}</div>
         <div class="deal-meta">${esc([d.borough, d.block && `Block ${d.block}`, d.lot && `Lot ${d.lot}`].filter(Boolean).join(" · ") || "Location details not set")}
           ${d.sample ? ` <span class="sample-tag">Sample</span>` : ""}</div>
+        ${d.acrisAddress ? `<div class="acris-filed">⚑ Filed in ACRIS under a different address: <b>${esc(d.acrisAddress)}</b></div>` : ""}
       </div>
       <select class="stage-select" data-field="stage">
         ${STAGES.map((x) => `<option ${x === d.stage ? "selected" : ""}>${x}</option>`).join("")}
